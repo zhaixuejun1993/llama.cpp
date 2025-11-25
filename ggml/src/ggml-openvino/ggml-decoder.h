@@ -13,6 +13,16 @@
 
 class GgmlOvDecoder : public ov::frontend::ggml::GgmlDecoder {
 public:
+    struct NodeInfo {
+        ggml_tensor * node;
+        std::map<std::string, ggml_tensor *> node_inputs;
+        std::vector<std::string> node_inputs_names;
+        std::map<std::string, ggml_tensor *> node_outputs;
+        std::vector<std::string> node_outputs_names;
+        int node_op_case = 0;
+        std::string node_op_type;
+        std::string node_name;
+    };
     // Graph decoder
     GgmlOvDecoder(ggml_cgraph * cgraph,
                   std::map<std::string, std::shared_ptr<ov::Node>> & model_weights,
@@ -77,7 +87,7 @@ public:
 
     virtual const std::string & get_op_name() const override;
 
-    virtual void visit_subgraph(std::function<void(std::shared_ptr<GgmlDecoder>)> node_visitor) const override;
+    virtual void visit_subgraph(std::function<void(std::shared_ptr<GgmlDecoder>, std::shared_ptr<GgmlDecoder>)> node_visitor) const override;
 
     ggml_tensor * get_input_ggml_tensor(const std::string & name) const { return m_inputs.at(name); }
 
@@ -150,6 +160,7 @@ private:
     static std::vector<size_t> get_shape(const ggml_tensor * tensor);
     static std::vector<size_t> get_stride(const ggml_tensor * tensor);
     static ov::element::Type get_ov_type(const ggml_tensor * tensor);
+    int compute_op_case(const ggml_tensor * node);
 
     void set_llm_params();
     void validate_cgraph() const;
@@ -172,6 +183,7 @@ private:
     std::map<std::string, std::shared_ptr<ov::Tensor>> m_model_extra_input_values;
     std::map<std::string, std::shared_ptr<ov::Node>> m_model_weights;
     std::vector<std::string> m_model_output_names;
+    std::vector<NodeInfo> m_node_info_list;
 
     // Fixed for a model
     int m_ctx = -1;

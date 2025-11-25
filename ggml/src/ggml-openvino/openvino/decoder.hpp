@@ -49,7 +49,7 @@ public:
 
     virtual const std::string& get_op_name() const = 0;
 
-    virtual void visit_subgraph(std::function<void(std::shared_ptr<GgmlDecoder>)> node_visitor) const = 0;
+    virtual void visit_subgraph(std::function<void(std::shared_ptr<GgmlDecoder>, std::shared_ptr<GgmlDecoder>)> node_visitor) const = 0;
 
     virtual int get_op_case() const = 0;
 

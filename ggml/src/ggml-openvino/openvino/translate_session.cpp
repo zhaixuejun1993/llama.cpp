@@ -164,7 +164,7 @@ std::shared_ptr<Model> TranslateSession::translate_graph(const frontend::InputMo
         (*tensor_map)[it.first] = it.second;
     }
 
-    auto node_visitor = [&](std::shared_ptr<GgmlDecoder> node) {
+    auto node_visitor = [&](std::shared_ptr<GgmlDecoder> node, std::shared_ptr<GgmlDecoder> decoder) {
         auto operation_type = node->get_op_type();
         if (operation_type == "GGML_OP_NONE") {
             return;

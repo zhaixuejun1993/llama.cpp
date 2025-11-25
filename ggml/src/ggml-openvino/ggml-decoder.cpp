@@ -82,6 +82,13 @@ GgmlOvDecoder::GgmlOvDecoder(ggml_cgraph * cgraph,
         set_input_output(cur_node);
     }
 
+    for (int node_n = 0; node_n < cgraph->n_nodes; node_n++) {
+        m_node_info_list[node_n].node_op_case = compute_op_case(m_node_info_list[node_n].node);
+        m_node = m_node_info_list[node_n].node;
+        m_node_info_list[node_n].node_op_type = get_op_type();
+        m_node = nullptr;
+    }
+
     add_extra_inputs();
 }
 
@@ -103,6 +110,7 @@ GgmlOvDecoder::GgmlOvDecoder(ggml_cgraph * cgraph, std::map<std::string, std::sh
 // 3. constructing a decoder for the whole graph naively (op test case)
 void GgmlOvDecoder::set_input_output(ggml_tensor * node, bool naive) {
     std::string node_name;
+    NodeInfo current_node_info;
     if (node->op == GGML_OP_SET_ROWS) {
         // SET_ROWS updates the tensor in place. For later ov op that uses the
         // the view_src of SET_ROWS, we need to make sure they get the updated tensor
@@ -116,6 +124,12 @@ void GgmlOvDecoder::set_input_output(ggml_tensor * node, bool naive) {
     m_output_names.push_back(node_name);
     m_outputs[node_name] = node;
 
+    current_node_info.node = node;
+    current_node_info.node_name = node_name;
+    current_node_info.node_outputs[node_name] = node;
+    current_node_info.node_outputs_names.push_back(node_name);
+    current_node_info.node_op_case = 0;
+
     for (int i = 0; i < GGML_MAX_SRC; i++) {
         auto * src = node->src[i];
         if (src == nullptr) {
@@ -124,6 +138,8 @@ void GgmlOvDecoder::set_input_output(ggml_tensor * node, bool naive) {
         std::string src_name = std::string(src->name);
         m_input_names.push_back(src_name);
         m_inputs[src_name] = src;
+        current_node_info.node_inputs[src_name] = src;
+        current_node_info.node_inputs_names.push_back(src_name);
         m_op_node_name.emplace_back(src_name, ggml_op_name(node->op));
 
         // Add model inputs and weights constants, if called for the whole graph
@@ -178,92 +194,97 @@ void GgmlOvDecoder::set_input_output(ggml_tensor * node, bool naive) {
         }
     }
 
+    m_node_info_list.push_back(current_node_info);
+
     if (m_node) {
-        switch (node->op) {
-        case GGML_OP_RESHAPE: {
-            auto * src = node->src[0];
-            if (src->op == GGML_OP_RESHAPE && src->src[0]->ne[0] == node->ne[0] && src->src[0]->ne[1] == node->ne[1]) {
-                m_op_case = 4;
-            } else if (node->ne[0] * node->ne[1] == src->ne[0]) {
-                m_op_case = 1;
-            } else if (src->ne[0] * src->ne[1] == node->ne[0]) {
-                m_op_case = 2;
-                if (src->ne[2] * src->ne[3] == node->ne[1]) {
-                    m_op_case = 5;
-                }
-            } else if (src->ne[0] * src->ne[1] == node->ne[1]) {
-                m_op_case = 3;
-            } else if (src->ne[1] * src->ne[2] == node->ne[1]) {
-                m_op_case = 6;
-            }
-            break;
-        }
-        case GGML_OP_CONT: {
-            if (node->src[0]->op == GGML_OP_PERMUTE) {
-                m_op_case = 1;
-            } else if (node->src[0]->op == GGML_OP_TRANSPOSE) {
-                m_op_case = 2;
-            } else if (node->src[0]->op == GGML_OP_VIEW) {
-                // The input comes from a VIEW which is subtensor
-                m_op_case = 3;
-            }
-            break;
-        }
-        case GGML_OP_PERMUTE: {
-            if (node->src[0]->op != GGML_OP_VIEW) {
-                m_op_case = 1;
-            } else if (ggml_is_contiguous(node->src[0])) {
-                std::string src_name(node->view_src->name);
-                if (src_name.find("cache") == std::string::npos) {
-                    // permute Qcur
-                    m_op_case = 4;
-                } else {
-                    // Permute kv cache (view)
-                    int layer = extract_layer_from_name(src_name);
-                    if (!is_swa_layer(layer)) {
-                        m_op_case = 2;
-                    } else {
-                        m_op_case = 3;
-                    }
-                }
-            }
-            break;
-        }
-        case GGML_OP_MUL_MAT: {
-            if (node->src[0]->op == GGML_OP_CONT && node->src[0]->src[0]->op == GGML_OP_TRANSPOSE) {
-                m_op_case = 2;
-            } else if (node->src[0]->op == GGML_OP_VIEW && node->src[1]->op == GGML_OP_VIEW) {
-                // test-backend-ops case
-                m_op_case = 3;
-            }
-            break;
-        }
-        case GGML_OP_GET_ROWS: {
-            if (node->src[1]->op == GGML_OP_VIEW) {
-                m_op_case = 2;
-            }
-            break;
-        }
-        case GGML_OP_ROPE: {
-            if (node->src[0]->op == GGML_OP_VIEW) {
-                m_op_case = 2;
-            }
-            break;
-        }
-        case GGML_OP_VIEW: {
-            if (node->src[0]->op == GGML_OP_VIEW) {
-                auto * src = node->src[0];
-                if (ggml_nelements(node) != ggml_nelements(src)) {
-                    throw std::runtime_error("Unsupported VIEW case");
-                }
-                // This view is a reshape, slicing happens at src->op
-                m_op_case = 2;
-            }
-        }
-        default:
-            break;
-        }
+        m_op_case = compute_op_case(node);
     }
+}
+
+// 封装 m_op_case switch-case 逻辑为私有成员函数
+int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) {
+    int op_case = 0;
+    switch (node->op) {
+    case GGML_OP_RESHAPE: {
+        auto * src = node->src[0];
+        if (src->op == GGML_OP_RESHAPE && src->src[0]->ne[0] == node->ne[0] && src->src[0]->ne[1] == node->ne[1]) {
+            op_case = 4;
+        } else if (node->ne[0] * node->ne[1] == src->ne[0]) {
+            op_case = 1;
+        } else if (src->ne[0] * src->ne[1] == node->ne[0]) {
+            op_case = 2;
+            if (src->ne[2] * src->ne[3] == node->ne[1]) {
+                op_case = 5;
+            }
+        } else if (src->ne[0] * src->ne[1] == node->ne[1]) {
+            op_case = 3;
+        } else if (src->ne[1] * src->ne[2] == node->ne[1]) {
+            op_case = 6;
+        }
+        break;
+    }
+    case GGML_OP_CONT: {
+        if (node->src[0]->op == GGML_OP_PERMUTE) {
+            op_case = 1;
+        } else if (node->src[0]->op == GGML_OP_TRANSPOSE) {
+            op_case = 2;
+        } else if (node->src[0]->op == GGML_OP_VIEW) {
+            op_case = 3;
+        }
+        break;
+    }
+    case GGML_OP_PERMUTE: {
+        if (node->src[0]->op != GGML_OP_VIEW) {
+            op_case = 1;
+        } else if (ggml_is_contiguous(node->src[0])) {
+            std::string src_name(node->view_src->name);
+            if (src_name.find("cache") == std::string::npos) {
+                op_case = 4;
+            } else {
+                int layer = extract_layer_from_name(src_name);
+                if (!is_swa_layer(layer)) {
+                    op_case = 2;
+                } else {
+                    op_case = 3;
+                }
+            }
+        }
+        break;
+    }
+    case GGML_OP_MUL_MAT: {
+        if (node->src[0]->op == GGML_OP_CONT && node->src[0]->src[0]->op == GGML_OP_TRANSPOSE) {
+            op_case = 2;
+        } else if (node->src[0]->op == GGML_OP_VIEW && node->src[1]->op == GGML_OP_VIEW) {
+            op_case = 3;
+        }
+        break;
+    }
+    case GGML_OP_GET_ROWS: {
+        if (node->src[1]->op == GGML_OP_VIEW) {
+            op_case = 2;
+        }
+        break;
+    }
+    case GGML_OP_ROPE: {
+        if (node->src[0]->op == GGML_OP_VIEW) {
+            op_case = 2;
+        }
+        break;
+    }
+    case GGML_OP_VIEW: {
+        if (node->src[0]->op == GGML_OP_VIEW) {
+            auto * src = node->src[0];
+            if (ggml_nelements(node) != ggml_nelements(src)) {
+                throw std::runtime_error("Unsupported VIEW case");
+            }
+            op_case = 2;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    return op_case;
 }
 
 int extract_layer_from_name(const std::string & name) {
@@ -779,11 +800,11 @@ int32_t * GgmlOvDecoder::get_output_op_params(const std::string & name) const {
     return m_outputs.at(name)->op_params;
 }
 
-void GgmlOvDecoder::visit_subgraph(std::function<void(std::shared_ptr<GgmlDecoder>)> node_visitor) const {
+void GgmlOvDecoder::visit_subgraph(std::function<void(std::shared_ptr<GgmlDecoder>, std::shared_ptr<GgmlDecoder>)> node_visitor) const {
     for (const auto & node : m_nodes) {
         auto decoder = std::make_shared<GgmlOvDecoder>(node, m_cgraph, m_is_static, m_ctx, m_ctx_swa, m_n_heads,
                                                        m_n_heads_kv, m_head_size, m_swa_layers);
-        node_visitor(decoder);
+        node_visitor(decoder, std::make_shared<GgmlOvDecoder>(*this));
     }
 }
 
