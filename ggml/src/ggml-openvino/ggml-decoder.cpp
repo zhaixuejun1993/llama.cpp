@@ -742,8 +742,16 @@ ov::PartialShape GgmlOvDecoder::get_input_shape(const std::string & name) const 
     return ov::PartialShape(get_shape(m_inputs.at(name)));
 }
 
+ov::PartialShape GgmlOvDecoder::get_input_shape(int node_idx, const std::string & name) const {
+    return ov::PartialShape(get_shape(m_node_info_list[node_idx].node_inputs.at(name)));
+}
+
 std::vector<size_t> GgmlOvDecoder::get_input_stride(const std::string & name) const {
     return get_stride(m_inputs.at(name));
+}
+
+std::vector<size_t> GgmlOvDecoder::get_input_stride(int node_idx, const std::string & name) const {
+    return get_stride(m_node_info_list[node_idx].node_inputs.at(name));
 }
 
 ov::element::Type GgmlOvDecoder::get_input_type(const std::string & name) const {
@@ -752,6 +760,10 @@ ov::element::Type GgmlOvDecoder::get_input_type(const std::string & name) const 
 
 size_t GgmlOvDecoder::get_input_size() const {
     return m_input_names.size();
+}
+
+size_t GgmlOvDecoder::get_input_size(int node_idx) const {
+    return m_node_info_list[node_idx].node_inputs_names.size();
 }
 
 std::string & GgmlOvDecoder::get_input_name(size_t index) const {
@@ -763,12 +775,24 @@ std::vector<std::string> GgmlOvDecoder::get_input_names() const {
     return m_input_names;
 }
 
+std::vector<std::string> GgmlOvDecoder::get_input_names(int node_idx) const {
+    return m_node_info_list[node_idx].node_inputs_names;
+}
+
 std::vector<size_t> GgmlOvDecoder::get_output_stride(const std::string & name) const {
     return get_stride(m_outputs.at(name));
 }
 
 ov::PartialShape GgmlOvDecoder::get_output_shape(const std::string & name) const {
     auto * ggml_tensor = m_outputs.at(name);
+    if (ggml_tensor->op == GGML_OP_SET_ROWS) {
+        ggml_tensor = ggml_tensor->view_src;
+    }
+    return ov::PartialShape(get_shape(ggml_tensor));
+}
+
+ov::PartialShape GgmlOvDecoder::get_output_shape(int node_idx, const std::string & name) const {
+    auto * ggml_tensor = m_node_info_list[node_idx].node_outputs.at(name);
     if (ggml_tensor->op == GGML_OP_SET_ROWS) {
         ggml_tensor = ggml_tensor->view_src;
     }
@@ -788,26 +812,47 @@ std::vector<std::string> GgmlOvDecoder::get_output_names() const {
     return m_output_names;
 }
 
+std::vector<std::string> GgmlOvDecoder::get_output_names(int node_idx) const {
+    return m_node_info_list[node_idx].node_outputs_names;
+}
+
 const std::string & GgmlOvDecoder::get_op_name() const {
     return m_op_name;
+}
+
+const std::string & GgmlOvDecoder::get_op_name(int node_idx) const {
+    return m_node_info_list[node_idx].node_name;
 }
 
 int32_t * GgmlOvDecoder::get_input_op_params(const std::string & name) const {
     return m_inputs.at(name)->op_params;
 }
 
+int32_t * GgmlOvDecoder::get_input_op_params(int node_idx, const std::string & name) const {
+    return m_node_info_list[node_idx].node_inputs.at(name)->op_params;
+}
+
 int32_t * GgmlOvDecoder::get_output_op_params(const std::string & name) const {
     return m_outputs.at(name)->op_params;
 }
 
-void GgmlOvDecoder::visit_subgraph(std::function<void(std::shared_ptr<GgmlDecoder>, std::shared_ptr<GgmlDecoder>)> node_visitor) const {
+int32_t * GgmlOvDecoder::get_output_op_params(int node_idx, const std::string & name) const {
+    return m_node_info_list[node_idx].node_outputs.at(name)->op_params;
+}
+
+void GgmlOvDecoder::visit_subgraph(std::function<void(std::shared_ptr<GgmlDecoder>, std::shared_ptr<GgmlDecoder>, int node_idx)> node_visitor) const {
+    int node_idx = 0;
     for (const auto & node : m_nodes) {
         auto decoder = std::make_shared<GgmlOvDecoder>(node, m_cgraph, m_is_static, m_ctx, m_ctx_swa, m_n_heads,
                                                        m_n_heads_kv, m_head_size, m_swa_layers);
-        node_visitor(decoder, std::make_shared<GgmlOvDecoder>(*this));
+        node_visitor(decoder, std::make_shared<GgmlOvDecoder>(*this), node_idx);
+        node_idx++;
     }
 }
 
+const std::string & GgmlOvDecoder::get_op_type(int node_idx) const {
+    return m_node_info_list[node_idx].node_op_type;
+}
 const std::string & GgmlOvDecoder::get_op_type() const {
     static const std::map<ggml_op, std::string> ops = {
         {GGML_OP_NONE,           "GGML_OP_NONE"          },
