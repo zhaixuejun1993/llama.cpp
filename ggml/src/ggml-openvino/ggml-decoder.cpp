@@ -840,13 +840,9 @@ int32_t * GgmlOvDecoder::get_output_op_params(int node_idx, const std::string & 
     return m_node_info_list[node_idx].node_outputs.at(name)->op_params;
 }
 
-void GgmlOvDecoder::visit_subgraph(std::function<void(std::shared_ptr<GgmlDecoder>, std::shared_ptr<GgmlDecoder>, int node_idx)> node_visitor) const {
-    int node_idx = 0;
-    for (const auto & node : m_nodes) {
-        auto decoder = std::make_shared<GgmlOvDecoder>(node, m_cgraph, m_is_static, m_ctx, m_ctx_swa, m_n_heads,
-                                                       m_n_heads_kv, m_head_size, m_swa_layers);
-        node_visitor(decoder, std::make_shared<GgmlOvDecoder>(*this), node_idx);
-        node_idx++;
+void GgmlOvDecoder::visit_subgraph(std::function<void(std::shared_ptr<GgmlDecoder>, int node_idx)> node_visitor) const {
+    for (int node_idx = 0; node_idx < m_cgraph->n_nodes; node_idx++) {
+        node_visitor(std::make_shared<GgmlOvDecoder>(*this), node_idx);
     }
 }
 
