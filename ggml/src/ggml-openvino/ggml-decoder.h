@@ -214,10 +214,10 @@ public:
     static std::vector<size_t> get_stride(const ggml_tensor * tensor);
     static ov::element::Type get_ov_type(const ggml_tensor * tensor);
     static std::string compute_op_type(const ggml_tensor * node);
+    void add_extra_inputs();
 
 private:
     void set_input_output(ggml_tensor * node, bool naive = false);
-    void add_extra_inputs();
     int compute_op_case(const ggml_tensor * node) const;
     void compute_cgraph_dynamic_dims();
     void add_extra_model_outputs_for_fallback();
