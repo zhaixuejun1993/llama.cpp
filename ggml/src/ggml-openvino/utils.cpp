@@ -481,7 +481,7 @@ ov::Tensor convert_ggml_input_to_ov(std::shared_ptr<GgmlOvDecoder> ggml_decoder,
     const auto * ggml_tensor = ggml_decoder->get_input_ggml_tensor(name);
     auto * input_data = ggml_tensor->data;
     ov::Shape input_shape;
-    if (ggml_tensor->op == GGML_OP_VIEW) {
+    if (0) {
         // This case is added to make test-backend-ops work
         input_shape = ggml_decoder->get_shape(ggml_tensor->view_src);
     } else {
@@ -520,6 +520,40 @@ ov::Tensor convert_ggml_input_to_ov(std::shared_ptr<GgmlOvDecoder> ggml_decoder,
 
         return input_tensor;
     }
+
+    // If the tensor is a result of VIEW operation, use ggml_cont to make it contiguous
+    if (ggml_tensor->op == GGML_OP_VIEW && !ggml_decoder->is_full_model()) {
+        // Create a temporary context for ggml_cont operation
+        // Need space for: tensor overhead, tensor data, graph structure, and work buffer
+        size_t mem_size = ggml_tensor_overhead() * 4 + ggml_nbytes(ggml_tensor) * 2 + 1024 * 1024;
+        struct ggml_init_params params = {
+            /*.mem_size   =*/mem_size,
+            /*.mem_buffer =*/NULL,
+            /*.no_alloc   =*/false,
+        };
+        struct ggml_context * temp_ctx = ggml_init(params);
+        if (temp_ctx == NULL) {
+            throw std::runtime_error("Failed to initialize temporary context for VIEW");
+        }
+
+        // Create contiguous tensor using ggml_cont
+        struct ggml_tensor * cont_tensor = ggml_cont(temp_ctx, const_cast<struct ggml_tensor *>(ggml_tensor));
+
+        // Build a simple graph to compute ggml_cont
+        struct ggml_cgraph * gf = ggml_new_graph(temp_ctx);
+        ggml_build_forward_expand(gf, cont_tensor);
+        ggml_graph_compute_with_ctx(temp_ctx, gf, 1);
+
+        // Create OpenVINO tensor with contiguous data
+        ov::Tensor input_tensor(ggml_decoder->get_ov_type(ggml_tensor), input_shape);
+        memcpy(input_tensor.data(), cont_tensor->data, ggml_nbytes(cont_tensor));
+
+        // Free temporary context
+        ggml_free(temp_ctx);
+
+        return input_tensor;
+    }
+
 
     auto input_tensor = ov::Tensor(ggml_decoder->get_ov_type(ggml_tensor), input_shape, input_data);
     return input_tensor;
