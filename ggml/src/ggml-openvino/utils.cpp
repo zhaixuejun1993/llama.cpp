@@ -159,6 +159,7 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, const std::strin
         auto param_name = ov_input_names[i];
         auto input_tensor = get_ov_input_tensor(ggml_decoder, param_name);
         infer_request->set_input_tensor(i, input_tensor);
+        print_input_tensor_info(param_name, input_tensor);
 
         if (getenv("GGML_OPENVINO_DEBUG_INPUT")) {
             print_input_tensor_info(param_name, input_tensor);
