@@ -158,6 +158,7 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, const std::strin
         auto param_name = ov_input_names[i];
         auto input_tensor = get_ov_input_tensor(ggml_decoder, param_name);
         infer_request->set_input_tensor(i, input_tensor);
+        // print_input_tensor_info(param_name, input_tensor);
 
         if (getenv("GGML_OPENVINO_DEBUG_INPUT")) {
             print_input_tensor_info(param_name, input_tensor);
@@ -474,6 +475,9 @@ enum ggml_status naive_compute(ggml_cgraph * cgraph,
     infer_request.infer();
     return GGML_STATUS_SUCCESS;
 }
+
+// add function, which save the ggml tensor data to a file
+
 
 namespace {
 ov::Tensor convert_ggml_input_to_ov(std::shared_ptr<GgmlOvDecoder> ggml_decoder, const std::string & name) {
@@ -842,3 +846,58 @@ graph_key compute_graph_key(ggml_cgraph * cgraph) {
 }
 
 #pragma GCC diagnostic pop
+
+#include <fstream>
+
+void save_tensor_data_to_file(const ggml_tensor * tensor) {
+    if (!tensor || !tensor->name) {
+        throw std::runtime_error("Tensor or tensor name is null");
+    }
+
+    // Use the tensor name as the file name
+    std::string filename = std::string(tensor->name) + ".txt";
+
+    // Open the file in text write mode
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file: " + filename);
+    }
+
+    // Write tensor data as numbers based on its type
+    int64_t num_elements = ggml_nelements(tensor);
+    switch (tensor->type) {
+        case GGML_TYPE_F32: {
+            const float * data = reinterpret_cast<const float *>(tensor->data);
+            for (int64_t i = 0; i < num_elements; ++i) {
+                file << data[i] << "\n";
+            }
+            break;
+        }
+        case GGML_TYPE_I32: {
+            const int32_t * data = reinterpret_cast<const int32_t *>(tensor->data);
+            for (int64_t i = 0; i < num_elements; ++i) {
+                file << data[i] << "\n";
+            }
+            break;
+        }
+        case GGML_TYPE_I64: {
+            const int64_t * data = reinterpret_cast<const int64_t *>(tensor->data);
+            for (int64_t i = 0; i < num_elements; ++i) {
+                file << data[i] << "\n";
+            }
+            break;
+        }
+        case GGML_TYPE_F16: {
+            const ov::float16 * data = reinterpret_cast<const ov::float16 *>(tensor->data);
+            for (int64_t i = 0; i < num_elements; ++i) {
+                file << static_cast<float>(data[i]) << "\n";
+            }
+            break;
+        }
+        default:
+            throw std::runtime_error("Unsupported tensor type");
+    }
+
+    // Close the file
+    file.close();
+}

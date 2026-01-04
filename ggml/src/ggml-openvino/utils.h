@@ -34,6 +34,7 @@ enum ggml_status ov_graph_compute_static(struct ggml_cgraph * cgraph);
 size_t checksum(const void * data, size_t size);
 
 void print_input_tensor_info(const std::string & name, const ov::Tensor & tensor);
+void save_tensor_data_to_file(const ggml_tensor * tensor);
 
 void print_output_tensor_info(const std::string & name, const ov::Tensor & tensor, const void * output_dst);
 
