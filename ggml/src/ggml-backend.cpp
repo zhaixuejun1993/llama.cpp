@@ -840,9 +840,29 @@ static char * fmt_size(size_t size) {
     return buffer;
 }
 
+static void ggml_backend_sched_print_assignments_xj(ggml_backend_sched_t sched, struct ggml_cgraph * graph) {
+    for (int i = 0; i < graph->n_nodes; i++) {
+        struct ggml_tensor * node = graph->nodes[i];
+        if (2 > 1) {
+            ggml_backend_t tensor_backend = ggml_backend_sched_get_tensor_backend(sched, node);
+            GGML_LOG_DEBUG("node #%3d (%10.10s): %20.20s [%5.5s]", i, ggml_op_name(node->op), node->name, tensor_backend ? ggml_backend_name(tensor_backend) : "NULL");
+            for (int j = 0; j < GGML_MAX_SRC; j++) {
+                struct ggml_tensor * src = node->src[j];
+                if (src == NULL) {
+                    continue;
+                }
+                ggml_backend_t src_backend = ggml_backend_sched_get_tensor_backend(sched, src);
+                GGML_LOG_DEBUG(" %20.20s [%5.5s]", src->name,
+                    src_backend ? ggml_backend_name(src_backend) : "NULL");
+            }
+            GGML_LOG_DEBUG("\n");
+        }
+    }
+}
+
 static void ggml_backend_sched_print_assignments(ggml_backend_sched_t sched, struct ggml_cgraph * graph) {
     int cur_split = 0;
-    for (int i = 0; i < graph->n_nodes; i++) {
+    for (int i = 0; i < 30; i++) {
         if (cur_split < sched->n_splits && i == sched->splits[cur_split].i_start) {
             ggml_backend_t split_backend = sched->backends[sched->splits[cur_split].backend_id];
             GGML_LOG_DEBUG("\n## SPLIT #%d: %s # %d inputs", cur_split, ggml_backend_name(split_backend),
@@ -851,29 +871,26 @@ static void ggml_backend_sched_print_assignments(ggml_backend_sched_t sched, str
                 if (j == 0) {
                     GGML_LOG_DEBUG(": ");
                 }
-                GGML_LOG_DEBUG("[%s (%5.5s)] ", sched->splits[cur_split].inputs[j]->name,
-                    fmt_size(ggml_nbytes(sched->splits[cur_split].inputs[j])));
+                GGML_LOG_DEBUG("[%s] ", sched->splits[cur_split].inputs[j]->name);
             }
             GGML_LOG_DEBUG("\n");
             cur_split++;
         }
         struct ggml_tensor * node = graph->nodes[i];
-        if (ggml_is_view_op(node->op)) {
-            continue;
-        }
-        if (sched->debug > 1) {
+        // if (ggml_is_view_op(node->op)) {
+        //     continue;
+        // }
+        if (2 > 1) {
             ggml_backend_t tensor_backend = ggml_backend_sched_get_tensor_backend(sched, node);
-            GGML_LOG_DEBUG("node #%3d (%10.10s): %20.20s (%5.5s) [%5.5s %8.8s] use=%d:", i, ggml_op_name(node->op), node->name,
-                fmt_size(ggml_nbytes(node)), tensor_backend ? ggml_backend_name(tensor_backend) : "NULL", GET_CAUSE(node),
-                graph->use_counts[ggml_hash_find(&graph->visited_hash_set, node)]);
+            GGML_LOG_DEBUG("node #%3d (%10.10s): %20.20s [%5.5s]", i, ggml_op_name(node->op), node->name, tensor_backend ? ggml_backend_name(tensor_backend) : "NULL");
             for (int j = 0; j < GGML_MAX_SRC; j++) {
                 struct ggml_tensor * src = node->src[j];
                 if (src == NULL) {
                     continue;
                 }
                 ggml_backend_t src_backend = ggml_backend_sched_get_tensor_backend(sched, src);
-                GGML_LOG_DEBUG(" %20.20s (%5.5s) [%5.5s %8.8s]", src->name,
-                    fmt_size(ggml_nbytes(src)), src_backend ? ggml_backend_name(src_backend) : "NULL", GET_CAUSE(src));
+                GGML_LOG_DEBUG(" %20.20s [%5.5s]", src->name,
+                    src_backend ? ggml_backend_name(src_backend) : "NULL");
             }
             GGML_LOG_DEBUG("\n");
         }
@@ -937,6 +954,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
             *leaf_backend_id = ggml_backend_sched_backend_id_from_cur(sched, leaf);
         }
     }
+    ggml_backend_sched_print_assignments_xj(sched, graph);
 
     for (int i = 0; i < graph->n_nodes; i++) {
         struct ggml_tensor * node = graph->nodes[i];
@@ -964,6 +982,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
 #endif
         }
     }
+    ggml_backend_sched_print_assignments_xj(sched, graph);
 
     // pass 2: expand current backend assignments
     // assign the same backend to adjacent nodes
@@ -1076,8 +1095,16 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
                     }
                     if (n_supported > n_supported_best) {
                         n_supported_best = n_supported;
-                        *node_backend_id = b;
-                        SET_CAUSE(node, "3.best");
+                        if (*node_backend_id == -1) {
+                            *node_backend_id = b;
+                            SET_CAUSE(node, "3.best");
+                        } else {
+                            // choose higher prio backend if there are another supported backends exclude cpu
+                            if (b != sched->n_backends - 1) {
+                                *node_backend_id = b;
+                                SET_CAUSE(node, "3.best");
+                            }
+                        }
                     }
                 }
             }
@@ -1110,6 +1137,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
     for (int i = 0; i < graph->n_nodes; i++) {
         struct ggml_tensor * node = graph->nodes[i];
         int * cur_backend_id = &tensor_backend_id(node);
+        // no need for vulkan
         if (node->view_src != NULL && *cur_backend_id == -1) {
             *cur_backend_id = tensor_backend_id(node->view_src);
             SET_CAUSE(node, "4.vsrc");
@@ -1138,6 +1166,8 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
         GGML_ASSERT(*cur_backend_id != -1);
     }
 
+    ggml_backend_sched_print_assignments_xj(sched, graph);
+
     // pass 5: split graph, find tensors that need to be copied
     {
         int i_split = 0;
@@ -1157,8 +1187,14 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
         for (; i < graph->n_nodes; i++) {
             struct ggml_tensor * node = graph->nodes[i];
 
+            // no need for vulkan
             if (ggml_is_view_op(node->op)) {
-                continue;
+                if (tensor_backend_id(node) != cur_backend_id) {
+                    tensor_backend_id(node) = cur_backend_id;
+                }
+                if (tensor_backend_id(node->view_src) == cur_backend_id) {
+                    continue;
+                }
             }
 
             const int node_backend_id = tensor_backend_id(node);
@@ -1258,6 +1294,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
                                 ggml_set_input(tensor_copy);
                                 ggml_set_output(tensor_copy); // prevent ggml-alloc from overwriting the tensor
                             }
+                            tensor_copy->org_src = src;
                             tensor_id_copy(src_id, cur_backend_id, c) = tensor_copy;
                             SET_CAUSE(tensor_copy, "4.cpy");
                         }
@@ -1273,6 +1310,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
         sched->n_splits = i_split + 1;
     }
 
+    ggml_backend_sched_print_assignments(sched, graph);
     if (sched->debug) {
         ggml_backend_sched_print_assignments(sched, graph);
     }
@@ -1585,7 +1623,7 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
                 }
 
                 j0 = j1;
-            }
+                       }
         }
 
         // record the event of this copy
