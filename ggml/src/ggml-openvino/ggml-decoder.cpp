@@ -237,7 +237,9 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
             op_case = 1;
         } else if (ggml_is_contiguous(node->src[0])) {
             std::string src_name(node->view_src->name);
-            if (src_name.find("cache") == std::string::npos) {
+            if (src_name.find("Qcur-0") != std::string::npos) {
+                op_case = 1;
+            } else if (src_name.find("cache") == std::string::npos) {
                 op_case = 4;
             } else {
                 int layer = extract_layer_from_name(src_name);
@@ -252,7 +254,7 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
     }
     case GGML_OP_MUL_MAT: {
         if (node->src[0]->op == GGML_OP_CONT && node->src[0]->src[0]->op == GGML_OP_TRANSPOSE) {
-            op_case = 2;
+            op_case = 0;
         } else if (node->src[0]->op == GGML_OP_VIEW && node->src[1]->op == GGML_OP_VIEW) {
             op_case = 3;
         }
@@ -951,6 +953,7 @@ void GgmlOvDecoder::compute_cgraph_dynamic_dims() {
         case GGML_OP_FLASH_ATTN_EXT:
         case GGML_OP_PERMUTE:
         case GGML_OP_RESHAPE:
+        case GGML_OP_CONT:
             m_node_dynamic_dims[node] = -1;
             if (m_node_dynamic_dims[node->src[0]] != -1) {
                 auto dynamic_dim_idx = m_node_dynamic_dims[node->src[0]];
@@ -972,6 +975,11 @@ void GgmlOvDecoder::compute_cgraph_dynamic_dims() {
         case GGML_OP_GLU:
         case GGML_OP_ROPE:
         case GGML_OP_SCALE:
+        case GGML_OP_TRANSPOSE:
+        case GGML_OP_SOFT_MAX:
+        case GGML_OP_ARGSORT:
+        case GGML_OP_ADD_ID:
+        case GGML_OP_MUL_MAT_ID:
             m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[0]];
             break;
         case GGML_OP_CPY:
@@ -987,6 +995,16 @@ void GgmlOvDecoder::compute_cgraph_dynamic_dims() {
     for (int i = 0; i < m_cgraph->n_nodes; i++) {
         ggml_tensor * node = m_cgraph->nodes[i];
         visit_node(visit_node, node);
+        // print node name and shape, replace the dynamic dim with -1
+        std::cout << "Node: " << node->name << " Shape: [ ";
+        for (int j = 0; j < 4; j++) {
+            if (m_node_dynamic_dims[node] == j) {
+                std::cout << -1 << " ";
+            } else {
+                std::cout << node->ne[j] << " ";
+            }
+        }
+        std::cout << "]" << std::endl;
     }
 }
 

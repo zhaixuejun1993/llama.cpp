@@ -228,6 +228,10 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
         break;
     }
     case GGML_OP_MUL_MAT: {
+        // if (op->src[1]->ne[2] != op->src[0]->ne[2]) {
+        //     GGML_LOG_WARN("OpenVINO backend does not support MUL_MAT with different shape on the batch dimensions\n");
+        //     return true;
+        // }
         if (op->src[0]->type == GGML_TYPE_F16 && op->src[1]->type == GGML_TYPE_F16) {
             // Has accuracy issue, try enabling this and see `test-backend-ops -o "MUL_MAT"`
             GGML_LOG_WARN("OpenVINO backend does not support MUL_MAT with two F16 tensors\n");

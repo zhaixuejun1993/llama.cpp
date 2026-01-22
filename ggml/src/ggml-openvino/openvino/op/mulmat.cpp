@@ -18,6 +18,7 @@
 #include <openvino/op/unsqueeze.hpp>
 #include <openvino/op/util/op_types.hpp>
 #include <vector>
+#include <iostream>
 
 namespace ov {
 namespace frontend {
@@ -45,10 +46,14 @@ OutputVector translate_mulmat(const NodeContext & context) {
         B = std::make_shared<ov::op::v0::Convert>(context.get_input(0), context.get_input_type(1));
     }
 
+    // Print shapes of A and B
+    std::cout << "Shape of A: " << A.get_partial_shape() << std::endl;
+    std::cout << "Shape of B: " << B.get_partial_shape() << std::endl;
+
     auto B_shape = context.get_input_shape(0).to_shape();
     auto A_shape = context.get_input_shape(1).to_shape();
-    int64_t A_batch = A_shape[0];
-    int64_t B_batch = B_shape[0];
+    int64_t A_batch = A_shape[1];
+    int64_t B_batch = B_shape[1];
     auto A_batch_larger = A_batch > B_batch;
     Output<Node> Z = A_batch_larger ? B : A;
     int64_t factor = A_batch_larger ? A_batch / B_batch : B_batch / A_batch;
@@ -57,19 +62,22 @@ OutputVector translate_mulmat(const NodeContext & context) {
         auto A_batch_node = ov::op::v0::Constant::create(ov::element::i64, {1}, std::vector<int64_t>{A_batch});
         auto B_batch_node = ov::op::v0::Constant::create(ov::element::i64, {1}, std::vector<int64_t>{B_batch});
         auto factor_node = ov::op::v0::Constant::create(ov::element::i64, {1}, std::vector<int64_t>{factor});
+        auto const_1_node = ov::op::v0::Constant::create(ov::element::i64, {1}, std::vector<int64_t>{1});
 
-        auto Z_last_two_dims = get_dimensions(Z.get_node_shared_ptr(), {1, 2});
+        auto Z_last_two_dims = get_dimensions(Z.get_node_shared_ptr(), {2, 3});
 
-        auto unsqueeze_axes = ov::op::v0::Constant::create(ov::element::i64, Shape{}, {1});
+        auto unsqueeze_axes = ov::op::v0::Constant::create(ov::element::i64, Shape{}, {2});
         auto Z_unsqueezed = std::make_shared<ov::op::v0::Unsqueeze>(Z, unsqueeze_axes);
+        std::cout << "Z_unsqueezed tensor shape: " << Z_unsqueezed->get_output_partial_shape(0) << std::endl;
 
         Output<Node> batch_small = A_batch_larger ? B_batch_node : A_batch_node;
         Output<Node> batch_large = A_batch_larger ? A_batch_node : B_batch_node;
         auto broadcast_shape =
-            std::make_shared<ov::op::v0::Concat>(ov::OutputVector{batch_small, factor_node, Z_last_two_dims}, 0);
+            std::make_shared<ov::op::v0::Concat>(ov::OutputVector{const_1_node, batch_small, factor_node, Z_last_two_dims}, 0);
         auto Z_broadcasted = std::make_shared<ov::op::v3::Broadcast>(Z_unsqueezed, broadcast_shape);
+        std::cout << "Z_broadcasted tensor shape: " << Z_broadcasted->get_output_partial_shape(0) << std::endl;
 
-        auto new_Z_shape = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{batch_large, Z_last_two_dims}, 0);
+        auto new_Z_shape = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{const_1_node, batch_large, Z_last_two_dims}, 0);
         Z = std::make_shared<ov::op::v1::Reshape>(Z_broadcasted, new_Z_shape, false);
     }
     if (A_batch_larger) {

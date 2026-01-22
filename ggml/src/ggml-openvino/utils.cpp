@@ -128,7 +128,7 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, const std::strin
             if (getenv("GGML_OPENVINO_DUMP_IR")) {
                 char timestamped_filename[64];
                 auto timestamp = (long long) ggml_time_us();
-                snprintf(timestamped_filename, sizeof(timestamped_filename), "model_%lld.xml", timestamp);
+                snprintf(timestamped_filename, sizeof(timestamped_filename), "xj_model_%lld.xml", timestamp);
                 ov::serialize(model, timestamped_filename);
             }
 

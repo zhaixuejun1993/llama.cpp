@@ -37,8 +37,8 @@ struct ModelParams {
 };
 
 struct ComputeParams {
-    int n_seq_active = -1;
-    int seq_active_start = -1;
+    int n_seq_active = 1;
+    int seq_active_start = 0;
     int attention_size = -1;
     int attention_size_swa = -1;
     int input_len = -1;
