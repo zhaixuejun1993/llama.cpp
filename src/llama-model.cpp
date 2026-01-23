@@ -2234,6 +2234,15 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
         std::copy(tensor_split, tensor_split + n_devices(), splits.begin());
     }
 
+    // if devices[0] name is OpenVINO0, set splits[0] = 1, the others to 0
+    // ggml_backend_dev_t first_dev = devices[0];
+    // if (first_dev && std::string(ggml_backend_dev_name(first_dev)) == "OPENVINO0") {
+    //     splits[0] = 1.0f;
+    //     for (size_t i = 1; i < n_devices(); ++i) {
+    //         splits[i] = 0.0f;
+    //     }
+    // }
+
     // sum and normalize the splits to get the split points
     float split_sum = 0.0f;
     for (size_t i = 0; i < n_devices(); ++i) {
@@ -2258,7 +2267,7 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
         }
         const int layer_gpu = std::upper_bound(splits.begin(), splits.begin() + n_devices(), float(il - i_gpu_start)/act_gpu_layers) - splits.begin();
         auto * dev = devices.at(layer_gpu);
-        LLAMA_LOG_DEBUG("load_tensors: layer %3d assigned to device %s, is_swa = %d\n", il, ggml_backend_dev_name(dev), is_swa);
+        LLAMA_LOG_INFO("load_tensors: layer %3d assigned to device %s, is_swa = %d\n", il, ggml_backend_dev_name(dev), is_swa);
         return {dev, &pimpl->gpu_buft_list.at(dev)};
     };
 
@@ -7282,13 +7291,15 @@ ggml_cgraph * llama_model::build_graph(const llm_graph_params & params) const {
 //
 
 llama_model_params llama_model_default_params() {
+    static const float tensor_split_values[] = {1.0, 0.0, 0.0, 0.0};
+    // static const float tensor_split_values[] = {};
     llama_model_params result = {
         /*.devices                     =*/ nullptr,
         /*.tensor_buft_overrides       =*/ nullptr,
         /*.n_gpu_layers                =*/ 999,
         /*.split_mode                  =*/ LLAMA_SPLIT_MODE_LAYER,
         /*.main_gpu                    =*/ 0,
-        /*.tensor_split                =*/ nullptr,
+        /*.tensor_split                =*/ tensor_split_values,
         /*.progress_callback           =*/ nullptr,
         /*.progress_callback_user_data =*/ nullptr,
         /*.kv_overrides                =*/ nullptr,

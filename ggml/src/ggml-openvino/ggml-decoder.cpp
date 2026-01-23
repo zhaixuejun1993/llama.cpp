@@ -919,7 +919,13 @@ void GgmlOvDecoder::compute_cgraph_dynamic_dims() {
         }
         for (int i = 0; i < GGML_MAX_SRC; i++) {
             ggml_tensor * src = node->src[i];
-            if (src) {
+            if (src == nullptr) {
+                continue;
+            }
+            if (src->org_src) {
+                self(self, src->org_src);
+                m_node_dynamic_dims[src] = m_node_dynamic_dims[src->org_src];
+            } else {
                 self(self, src);
             }
         }
