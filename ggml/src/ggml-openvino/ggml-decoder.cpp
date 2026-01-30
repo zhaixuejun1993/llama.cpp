@@ -1024,6 +1024,9 @@ void GgmlOvDecoder::add_extra_model_outputs_for_fallback() {
     }
 
     for (const auto & pair : address_map) {
+        if (pair.second->op == GGML_OP_PERMUTE) {
+            continue;
+        }
         const std::string & name = pair.second->name;
         if (m_model_outputs.find(name) == m_model_outputs.end()) {
             m_model_outputs[name] = pair.second;

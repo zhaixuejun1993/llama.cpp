@@ -318,7 +318,7 @@ static bool ggml_backend_openvino_device_supports_op(ggml_backend_dev_t dev, con
     default: {
         auto supported = supported_ops.find(op->op) != supported_ops.end();
         if (!supported) {
-            GGML_LOG_WARN("OpenVINO backend does not support op %s\n", ggml_op_name(op->op));
+            // GGML_LOG_WARN("OpenVINO backend does not support op %s\n", ggml_op_name(op->op));
             return false;
         }
     }

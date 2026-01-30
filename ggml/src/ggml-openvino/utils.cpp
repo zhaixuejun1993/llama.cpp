@@ -150,7 +150,7 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, const std::strin
             ov_output_names_cache[key] = std::move(ov_output_names);
         }
     }
-
+    auto set_input_output_start_time = ggml_time_us();
     auto ov_input_names = ov_input_names_cache[key];
     auto ov_output_names = ov_output_names_cache[key];
 
@@ -168,7 +168,8 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, const std::strin
         auto output_tensor = get_ov_output_tensor(ggml_decoder, ov_output_names[i]);
         infer_request->set_output_tensor(i, output_tensor);
     }
-
+    auto set_input_output_end_time = ggml_time_us();
+    
     infer_request->infer();
     infer_end_time = ggml_time_us();
 
@@ -186,6 +187,7 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, const std::strin
             GGML_LOG_INFO("  - Graph conversion Time: %ld ms \n", (conversion_end_time - decoder_end_time) / 1000);
             GGML_LOG_INFO("  - Graph compile Time: %ld ms \n", (compile_end_time - conversion_end_time) / 1000);
         }
+        GGML_LOG_INFO("  - Set input output tensor Time: %ld ms \n", (set_input_output_end_time - set_input_output_start_time) / 1000);
         GGML_LOG_INFO("  - Graph Inference Time: %ld ms \n", (infer_end_time - compile_end_time) / 1000);
     }
 

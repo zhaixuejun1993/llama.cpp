@@ -21,7 +21,7 @@
 #include <string.h>
 #include <algorithm>
 #include <vector>
-
+#include <chrono>
 #ifdef __APPLE__
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -862,7 +862,7 @@ static void ggml_backend_sched_print_assignments_xj(ggml_backend_sched_t sched, 
 
 static void ggml_backend_sched_print_assignments(ggml_backend_sched_t sched, struct ggml_cgraph * graph) {
     int cur_split = 0;
-    for (int i = 0; i < 30; i++) {
+    for (int i = 0; i < graph->n_nodes; i++) {
         if (cur_split < sched->n_splits && i == sched->splits[cur_split].i_start) {
             ggml_backend_t split_backend = sched->backends[sched->splits[cur_split].backend_id];
             GGML_LOG_DEBUG("\n## SPLIT #%d: %s # %d inputs", cur_split, ggml_backend_name(split_backend),
@@ -954,7 +954,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
             *leaf_backend_id = ggml_backend_sched_backend_id_from_cur(sched, leaf);
         }
     }
-    ggml_backend_sched_print_assignments_xj(sched, graph);
+    // ggml_backend_sched_print_assignments_xj(sched, graph);
 
     for (int i = 0; i < graph->n_nodes; i++) {
         struct ggml_tensor * node = graph->nodes[i];
@@ -982,7 +982,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
 #endif
         }
     }
-    ggml_backend_sched_print_assignments_xj(sched, graph);
+    // ggml_backend_sched_print_assignments_xj(sched, graph);
 
     // pass 2: expand current backend assignments
     // assign the same backend to adjacent nodes
@@ -1165,8 +1165,12 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
         }
         GGML_ASSERT(*cur_backend_id != -1);
     }
+    // for (int i = 0; i < 9; i++) {
+    //         struct ggml_tensor * node = graph->nodes[i];
+    //         tensor_backend_id(node) = 2;
+    // }
 
-    ggml_backend_sched_print_assignments_xj(sched, graph);
+    // ggml_backend_sched_print_assignments_xj(sched, graph);
 
     // pass 5: split graph, find tensors that need to be copied
     {
@@ -1310,7 +1314,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
         sched->n_splits = i_split + 1;
     }
 
-    ggml_backend_sched_print_assignments(sched, graph);
+    // ggml_backend_sched_print_assignments(sched, graph);
     if (sched->debug) {
         ggml_backend_sched_print_assignments(sched, graph);
     }
@@ -1459,12 +1463,17 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
     std::vector<int32_t> ids;
     std::vector<ggml_bitset_t> used_ids;
 
+    // add a time stamp to statistic the copy time, here define a variable named total_time
+    GGML_LOG_INFO("=========================\n");
+    auto infer_start_time = std::chrono::high_resolution_clock::now();
     for (int split_id = 0; split_id < sched->n_splits; split_id++) {
+        auto start_time = std::chrono::high_resolution_clock::now();
         struct ggml_backend_sched_split * split = &splits[split_id];
         int split_backend_id = split->backend_id;
         ggml_backend_t split_backend = sched->backends[split_backend_id];
 
         // copy the input tensors to the split backend
+        auto copy_start_time = std::chrono::high_resolution_clock::now();
         for (int input_id = 0; input_id < split->n_inputs; input_id++) {
             ggml_backend_t input_backend = ggml_backend_sched_get_tensor_backend(sched, split->inputs[input_id]);
             struct ggml_tensor * input = split->inputs[input_id];
@@ -1586,7 +1595,9 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
                 }
             }
         }
+        auto copy_end_time = std::chrono::high_resolution_clock::now();
 
+        auto exec_start_time = std::chrono::high_resolution_clock::now();
         if (!sched->callback_eval) {
             enum ggml_status ec = ggml_backend_graph_compute_async(split_backend, &split->graph);
             if (ec != GGML_STATUS_SUCCESS) {
@@ -1625,6 +1636,7 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
                 j0 = j1;
                        }
         }
+        auto exec_end_time = std::chrono::high_resolution_clock::now();
 
         // record the event of this copy
         if (split->n_inputs > 0) {
@@ -1632,7 +1644,17 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
                 ggml_backend_event_record(sched->events[split_backend_id][sched->cur_copy], split_backend);
             }
         }
+        
+        auto end_time = std::chrono::high_resolution_clock::now();
+        GGML_LOG_INFO("sub infer id: %d   total time: %lld us   copy time: %lld us   exec time: %lld us\n",
+                  split_id,
+                  std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count(),
+                  std::chrono::duration_cast<std::chrono::microseconds>(copy_end_time - copy_start_time).count(),
+                  std::chrono::duration_cast<std::chrono::microseconds>(exec_end_time - exec_start_time).count());
     }
+    // auto infer_end_time = std::chrono::high_resolution_clock::now();
+    // GGML_LOG_INFO("Total copy + compute time: %lld us\n",
+    //               std::chrono::duration_cast<std::chrono::microseconds>(infer_end_time - infer_start_time).count());
 
     return GGML_STATUS_SUCCESS;
 }
