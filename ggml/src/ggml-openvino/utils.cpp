@@ -4,6 +4,7 @@
 #include "ggml-openvino-extra.h"
 #include "ggml-openvino/ggml-decoder.h"
 #include "ggml.h"
+#include "ggml-cpu.h"
 #include "openvino/frontend.hpp"
 #include "openvino/input_model.hpp"
 
@@ -181,6 +182,67 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, const std::strin
 
     infer_request->infer();
     infer_end_time = ggml_time_us();
+
+    if (0) {
+        // 如果ov_output_names中有"result_output"这个输出，并且它的数据类型是F32或F16，就把它的数据保存到文本文件中，文件名包含输出张量的名字和操作类型
+
+        if (ov_output_names.size() > 0 &&
+            std::find(ov_output_names.begin(), ov_output_names.end(), "result_output") != ov_output_names.end()) {
+            auto * ggml_tensor = ggml_decoder->get_model_outputs().at("result_output");
+
+            char txt_filename[256];
+            snprintf(txt_filename, sizeof(txt_filename), "xj-node_%s_op_%s.txt",
+                     ggml_tensor->name ? ggml_tensor->name : "unnamed", ggml_op_name(ggml_tensor->op));
+
+            FILE * txt_f = fopen(txt_filename, "w");
+
+            // 基本信息
+            fprintf(txt_f, "\nData:\n");
+
+            // 数据转换和写入
+            size_t n_elements = ggml_nelements(ggml_tensor);
+            if (ggml_tensor->type == GGML_TYPE_F32) {
+                float * data_f32 = (float *) ggml_tensor->data;
+                for (size_t k = 0; k < n_elements; k++) {
+                    // fprintf(txt_f, "%.6f\n", roundf(data_f32[k] * 1000000) / 1000000);
+                    fprintf(txt_f, "%f\n", data_f32[k]);
+                }
+            } else if (ggml_tensor->type == GGML_TYPE_F16) {
+                ggml_fp16_t * data_f16 = (ggml_fp16_t *) ggml_tensor->data;
+                for (size_t k = 0; k < n_elements; k++) {
+                    float value = ggml_fp16_to_fp32(data_f16[k]);
+                    // fprintf(txt_f, "%.6f\n", roundf(value * 1000000) / 1000000);
+                    fprintf(txt_f, "%f\n", value);
+                }
+            } else {
+                fprintf(txt_f, "Unsupported type for text dump: %s\n", ggml_type_name(ggml_tensor->type));
+                fprintf(txt_f, "Use binary dump instead.\n");
+            }
+
+            fclose(txt_f);
+            printf("Saved: %s\n", txt_filename);
+
+            auto output_tensor = infer_request->get_output_tensor(10);
+            // 保存output_tensor的数据到文本文件中，文件名包含输出张量的名字和操作类型
+            char output_txt_filename[256];
+            snprintf(output_txt_filename, sizeof(output_txt_filename), "xj-output_%s_op_%s.txt",
+                     ov_output_names[10].c_str(), "result_output");
+            FILE * output_txt_f = fopen(output_txt_filename, "w");
+            if (output_txt_f) {
+                size_t output_n_elements = output_tensor.get_size();
+                if (output_tensor.get_element_type().bitwidth() == 32) {
+                    float * output_data_f32 = (float *) output_tensor.data();
+                    for (size_t k = 0; k < output_n_elements; k++) {
+                        fprintf(output_txt_f, "%f\n", output_data_f32[k]);
+                    }
+                }
+                fclose(output_txt_f);
+                printf("Saved: %s\n", output_txt_filename);
+            } else {
+                printf("Failed to open file for writing: %s\n", output_txt_filename);
+            }
+        }
+    }
 
     if (getenv("GGML_OPENVINO_DEBUG_OUTPUT")) {
         for (size_t i = 0; i < ov_output_names.size(); i++) {
@@ -414,7 +476,7 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph) {
 }
 
 bool is_naive(ggml_cgraph * cgraph) {
-    constexpr int naive_graph_size_threshold = 20;
+    constexpr int naive_graph_size_threshold = 0;
     return cgraph->n_nodes < naive_graph_size_threshold;
 }
 
@@ -468,7 +530,7 @@ namespace {
 ov::Tensor convert_ggml_input_to_ov(std::shared_ptr<GgmlOvDecoder> ggml_decoder, const std::string & name) {
     const auto * ggml_tensor = ggml_decoder->get_input_ggml_tensor(name);
 
-    if (ggml_tensor->extra != nullptr) {
+    if (ggml_tensor->extra != nullptr && ggml_decoder->is_full_model()) {
         // GGML_LOG_DEBUG("Using ggml_tensor->extra as ov::Tensor for input: %s\n", name.c_str());
         auto * extra_base = static_cast<ggml_openvino_extra_base *>(ggml_tensor->extra);
         if (extra_base->type != ggml_openvino_extra_base::Type::TENSOR) {
@@ -481,12 +543,76 @@ ov::Tensor convert_ggml_input_to_ov(std::shared_ptr<GgmlOvDecoder> ggml_decoder,
     // GGML_LOG_DEBUG("Converting ggml tensor to ov::Tensor for input: %s\n", name.c_str());
     auto * input_data = ggml_tensor->data;
     ov::Shape input_shape;
-    if (ggml_tensor->op == GGML_OP_VIEW) {
+    if (0) {
         // This case is added to make test-backend-ops work
         input_shape = ggml_decoder->get_shape(ggml_tensor->view_src);
     } else {
         input_shape = ggml_decoder->get_shape(ggml_tensor);
     }
+
+    // If the tensor is a result of PERMUTE operation, use ggml_cont to make it contiguous
+    if (ggml_tensor->op == GGML_OP_PERMUTE && !ggml_decoder->is_full_model()) {
+        // Create a temporary context for ggml_cont operation
+        // Need space for: tensor overhead, tensor data, graph structure, and work buffer
+        size_t mem_size = ggml_tensor_overhead() * 4 + ggml_nbytes(ggml_tensor) * 2 + 1024 * 1024;
+        struct ggml_init_params params = {
+            /*.mem_size   =*/mem_size,
+            /*.mem_buffer =*/NULL,
+            /*.no_alloc   =*/false,
+        };
+        struct ggml_context * temp_ctx = ggml_init(params);
+        if (temp_ctx == NULL) {
+            throw std::runtime_error("Failed to initialize temporary context for PERMUTE");
+        }
+
+        // Create contiguous tensor using ggml_cont
+        struct ggml_tensor * cont_tensor = ggml_cont(temp_ctx, const_cast<struct ggml_tensor *>(ggml_tensor));
+
+        // Build a simple graph to compute ggml_cont
+        struct ggml_cgraph * gf = ggml_new_graph(temp_ctx);
+        ggml_build_forward_expand(gf, cont_tensor);
+        ggml_graph_compute_with_ctx(temp_ctx, gf, 1);
+
+        // Create OpenVINO tensor with contiguous data
+        ov::Tensor input_tensor(ggml_decoder->get_ov_type(ggml_tensor), input_shape);
+        memcpy(input_tensor.data(), cont_tensor->data, ggml_nbytes(cont_tensor));
+
+        // Free temporary context
+        ggml_free(temp_ctx);
+
+        return input_tensor;
+    }
+
+    // If the tensor is a result of VIEW operation, use ggml_cont to make it contiguous
+    if (ggml_tensor->op == GGML_OP_VIEW && !ggml_decoder->is_full_model()) {
+        // if the ggml_tensor shape size is equal to the source tensor shape size, no need to reconstruct the ov input tensor data
+        if (ggml_nelements(ggml_tensor) == ggml_nelements(ggml_tensor->view_src)) {
+            auto input_tensor = ov::Tensor(ggml_decoder->get_ov_type(ggml_tensor), input_shape, input_data);
+            return input_tensor;
+        }
+
+        // Create OpenVINO input tensor, the data need to reconstructed based on the view tensor shape & stride
+        // Todo: parallel copy & the copy the whole last dim one loop (perf improve)
+        ov::Tensor input_tensor(ggml_decoder->get_ov_type(ggml_tensor), input_shape);
+        const auto * src_tensor = ggml_tensor->view_src;
+        size_t des_index = 0;
+        for (size_t i0 = 0; i0 < static_cast<size_t>(ggml_tensor->ne[3]); i0++) {
+            for (size_t i1 = 0; i1 < static_cast<size_t>(ggml_tensor->ne[2]); i1++) {
+                for (size_t i2 = 0; i2 < static_cast<size_t>(ggml_tensor->ne[1]); i2++) {
+                    for (size_t i3 = 0; i3 < static_cast<size_t>(ggml_tensor->ne[0]); i3++) {
+                        size_t src_index = ggml_tensor->view_offs + i0 * ggml_tensor->nb[3] + i1 * ggml_tensor->nb[2] +
+                                           i2 * ggml_tensor->nb[1] + i3 * ggml_tensor->nb[0];
+
+                        memcpy(static_cast<char *>(input_tensor.data()) + des_index,
+                               static_cast<const char *>(src_tensor->data) + src_index, ggml_tensor->nb[0]);
+                        des_index += ggml_tensor->nb[0];
+                    }
+                }
+            }
+        }
+        return input_tensor;
+    }
+
     auto input_tensor = ov::Tensor(ggml_decoder->get_ov_type(ggml_tensor), input_shape, input_data);
     return input_tensor;
 }
@@ -764,13 +890,7 @@ bool get_is_prefill(const ggml_tensor * inp_pos) {
 graph_key compute_graph_key(ggml_cgraph * cgraph) {
     graph_key key;
     key.n_nodes = cgraph->n_nodes;
-
-    for (int i = 0; i < cgraph->n_nodes; ++i) {
-        const auto * node = cgraph->nodes[i];
-        if (node->op == GGML_OP_SET_ROWS && strncmp(node->src[2]->name, "cache_k_l0", 10) == 0) {
-            key.cache_k_l0 = node->src[2];
-        }
-    }
+    key.nodes = cgraph->nodes;
     return key;
 }
 

@@ -5,7 +5,7 @@
 #include "llama-grammar.h"
 
 #include "ggml-cpp.h"
-
+#include <fstream>
 #include <array>
 #include <algorithm>
 #include <cassert>
@@ -860,6 +860,21 @@ llama_token llama_sampler_sample(struct llama_sampler * smpl, struct llama_conte
         /* .selected   = */ -1,
         /* .sorted     = */ false,
     };
+
+    if (0) {
+        // save cur的data到txt文件以float的类型
+        std::string filename = format("cur_%d.txt", idx);
+        std::ofstream file(filename);
+        if (file.is_open()) {
+            for (const auto & token_data : cur) {
+                file << token_data.logit << "\n";
+            }
+            file.close();
+            LLAMA_LOG_DEBUG("Saved cur data to %s\n", filename.c_str());
+        } else {
+            LLAMA_LOG_ERROR("Failed to open file %s for writing\n", filename.c_str());
+        }
+    }
 
     llama_sampler_apply(smpl, &cur_p);
 

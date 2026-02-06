@@ -337,6 +337,40 @@ static void ggml_backend_openvino_buffer_get_tensor(ggml_backend_buffer_t buffer
     GGML_ASSERT(tensor != nullptr && tensor->data != nullptr);
     ggml_backend_openvino_buffer_context * ctx = (ggml_backend_openvino_buffer_context *) buffer->context;
 
+    if (0) {
+        char txt_filename[256];
+        snprintf(txt_filename, sizeof(txt_filename), "tensor_%s_op_%s.txt",
+                 tensor->name ? tensor->name : "unnamed", ggml_op_name(tensor->op));
+
+        FILE * txt_f = fopen(txt_filename, "w");
+
+        // 基本信息
+        fprintf(txt_f, "\nData:\n");
+
+        // 数据转换和写入
+        size_t n_elements = ggml_nelements(tensor);
+        if (tensor->type == GGML_TYPE_F32) {
+            float * data_f32 = (float *) tensor->data;
+            for (size_t k = 0; k < n_elements; k++) {
+                // fprintf(txt_f, "%.6f\n", roundf(data_f32[k] * 1000000) / 1000000);
+                fprintf(txt_f, "%f\n", data_f32[k]);
+            }
+        } else if (tensor->type == GGML_TYPE_F16) {
+            ggml_fp16_t * data_f16 = (ggml_fp16_t *) tensor->data;
+            for (size_t k = 0; k < n_elements; k++) {
+                float value = ggml_fp16_to_fp32(data_f16[k]);
+                // fprintf(txt_f, "%.6f\n", roundf(value * 1000000) / 1000000);
+                fprintf(txt_f, "%f\n", value);
+            }
+        } else {
+            fprintf(txt_f, "Unsupported type for text dump: %s\n", ggml_type_name(tensor->type));
+            fprintf(txt_f, "Use binary dump instead.\n");
+        }
+
+        fclose(txt_f);
+        printf("Saved: %s\n", txt_filename);
+    }
+
     if (ctx->is_remote) {
         // For remote (device) buffers, use OpenCL USM memcpy (device-to-host)
         cl_command_queue queue = ggml_openvino_get_cl_queue();
@@ -879,7 +913,7 @@ static bool ggml_backend_openvino_device_supports_op(ggml_backend_dev_t dev, con
 
     static const std::set<ggml_op> supported_ops{GGML_OP_NONE, GGML_OP_ADD, GGML_OP_MUL, GGML_OP_MUL_MAT, GGML_OP_VIEW,
                                                  GGML_OP_CONT, GGML_OP_RESHAPE, GGML_OP_PERMUTE, GGML_OP_TRANSPOSE,
-                                                 GGML_OP_GET_ROWS, GGML_OP_ROPE, GGML_OP_RMS_NORM, GGML_OP_SCALE,
+                                                 GGML_OP_GET_ROWS, GGML_OP_RMS_NORM, GGML_OP_SCALE,
                                                  // softmax is not updated due to replaced by flash_attn_ext
                                                  // GGML_OP_SOFT_MAX,
                                                  GGML_OP_SET_ROWS, GGML_OP_FLASH_ATTN_EXT, GGML_OP_CPY};
@@ -911,7 +945,7 @@ static bool ggml_backend_openvino_device_supports_op(ggml_backend_dev_t dev, con
     default: {
         auto supported = supported_ops.find(op->op) != supported_ops.end();
         if (!supported) {
-            GGML_LOG_WARN("OpenVINO backend does not support op %s\n", ggml_op_name(op->op));
+            // GGML_LOG_WARN("OpenVINO backend does not support op %s\n", ggml_op_name(op->op));
             return false;
         }
     }

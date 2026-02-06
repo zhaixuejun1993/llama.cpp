@@ -13,7 +13,7 @@
 #include <cstring>
 #include <limits>
 #include <stdexcept>
-
+#include <fstream>
 //
 // llama_context
 //
@@ -1675,6 +1675,17 @@ int llama_context::decode(const llama_batch & batch_inp) {
                 GGML_ASSERT( n_outputs_prev + n_outputs <= n_outputs_all);
                 GGML_ASSERT((n_outputs_prev + n_outputs)*n_vocab <= (int64_t) logits_size);
                 ggml_backend_tensor_get_async(backend_res, t_logits, logits_out, 0, n_outputs*n_vocab*sizeof(float));
+            }
+            {
+                // 保存logits_out到txt文件以float的类型保存
+                std::string   filename = "logits_out.txt";
+                std::ofstream outfile(filename, std::ios::app);
+                if (outfile.is_open()) {
+                    for (int64_t i = 0; i < n_outputs * n_vocab; ++i) {
+                        outfile << logits_out[i] << "\n";
+                    }
+                    outfile.close();
+                }
             }
         }
 

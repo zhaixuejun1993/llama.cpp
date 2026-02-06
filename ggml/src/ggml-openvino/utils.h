@@ -8,17 +8,17 @@
 
 struct graph_key {
     size_t n_nodes;
-    void * cache_k_l0;
+    void * nodes;
 
     bool operator==(const graph_key & other) const {
-        return n_nodes == other.n_nodes && cache_k_l0 == other.cache_k_l0;
+        return n_nodes == other.n_nodes && nodes == other.nodes;
     }
 };
 
 struct graph_key_hash {
     size_t operator()(const graph_key & key) const {
         size_t h = std::hash<size_t>{}(key.n_nodes);
-        h ^= std::hash<void *>{}(key.cache_k_l0) + 0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<void *>{}(key.nodes) + 0x9e3779b9 + (h << 6) + (h >> 2);
         return h;
     }
 };
