@@ -192,6 +192,8 @@ int main(int argc, char ** argv) {
             std::string s(buf, n);
             printf("%s", s.c_str());
             fflush(stdout);
+            // print new_token_id as debug info
+            fprintf(stderr, "\n[DEBUG] new_token_id: %d, piece: %s\n", new_token_id, s.c_str());
 
             // prepare the next batch with the sampled token
             batch = llama_batch_get_one(&new_token_id, 1);
