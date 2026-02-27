@@ -154,7 +154,7 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, const std::strin
             if (getenv("GGML_OPENVINO_DUMP_IR")) {
                 char timestamped_filename[64];
                 auto timestamp = (long long) ggml_time_us();
-                snprintf(timestamped_filename, sizeof(timestamped_filename), "model_%lld.xml", timestamp);
+                snprintf(timestamped_filename, sizeof(timestamped_filename), "model_%lld_xj.xml", timestamp);
                 ov::serialize(model, timestamped_filename);
             }
 
@@ -520,40 +520,35 @@ ov::Tensor convert_ggml_input_to_ov(std::shared_ptr<GgmlOvDecoder> ggml_decoder,
         input_shape = ggml_decoder->get_shape(ggml_tensor);
     }
 
-    // If the tensor is a result of PERMUTE operation, use ggml_cont to make it contiguous
+    // If the tensor is a result of PERMUTE operation and the model is not fully supported, we need to reconstruct the data based on the view tensor shape & stride
     if (ggml_tensor->op == GGML_OP_PERMUTE && !ggml_decoder->is_full_model()) {
-        // Create a temporary context for ggml_cont operation
-        // Need space for: tensor overhead, tensor data, graph structure, and work buffer
-        size_t mem_size = ggml_tensor_overhead() * 4 + ggml_nbytes(ggml_tensor) * 2 + 1024 * 1024;
-        struct ggml_init_params params = {
-            /*.mem_size   =*/mem_size,
-            /*.mem_buffer =*/NULL,
-            /*.no_alloc   =*/false,
-        };
-        struct ggml_context * temp_ctx = ggml_init(params);
-        if (temp_ctx == NULL) {
-            throw std::runtime_error("Failed to initialize temporary context for PERMUTE");
-        }
-
-        // Create contiguous tensor using ggml_cont
-        struct ggml_tensor * cont_tensor = ggml_cont(temp_ctx, const_cast<struct ggml_tensor *>(ggml_tensor));
-
-        // Build a simple graph to compute ggml_cont
-        struct ggml_cgraph * gf = ggml_new_graph(temp_ctx);
-        ggml_build_forward_expand(gf, cont_tensor);
-        ggml_graph_compute_with_ctx(temp_ctx, gf, 1);
-
-        // Create OpenVINO tensor with contiguous data
+        // Create OpenVINO input tensor, the data need to reconstructed based on the view tensor shape & stride
         ov::Tensor input_tensor(ggml_decoder->get_ov_type(ggml_tensor), input_shape);
-        memcpy(input_tensor.data(), cont_tensor->data, ggml_nbytes(cont_tensor));
+        const auto * src_tensor = ggml_tensor->view_src;
+        std::vector<uint8_t>    data;
+        auto n_bytes = ggml_nbytes(src_tensor);
+        data.resize(n_bytes);
+        ggml_backend_tensor_get(src_tensor, data.data(), 0, n_bytes);
 
-        // Free temporary context
-        ggml_free(temp_ctx);
+        size_t des_index = 0;
+        for (size_t i0 = 0; i0 < static_cast<size_t>(ggml_tensor->ne[3]); i0++) {
+            for (size_t i1 = 0; i1 < static_cast<size_t>(ggml_tensor->ne[2]); i1++) {
+                for (size_t i2 = 0; i2 < static_cast<size_t>(ggml_tensor->ne[1]); i2++) {
+                    for (size_t i3 = 0; i3 < static_cast<size_t>(ggml_tensor->ne[0]); i3++) {
+                        size_t src_index = ggml_tensor->view_offs + i0 * ggml_tensor->nb[3] + i1 * ggml_tensor->nb[2] +
+                                           i2 * ggml_tensor->nb[1] + i3 * ggml_tensor->nb[0];
 
+                        memcpy(static_cast<char *>(input_tensor.data()) + des_index,
+                               reinterpret_cast<const char *>(data.data()) + src_index, ggml_tensor->nb[0]);
+                        des_index += ggml_tensor->nb[0];
+                    }
+                }
+            }
+        }
         return input_tensor;
     }
 
-    // If the tensor is a result of VIEW operation, use ggml_cont to make it contiguous
+    // If the tensor is a result of VIEW operation and the model is not fully supported, we need to reconstruct the data based on the view tensor shape & stride
     if (ggml_tensor->op == GGML_OP_VIEW && !ggml_decoder->is_full_model()) {
         // if the ggml_tensor shape size is equal to the source tensor shape size, no need to reconstruct the ov input tensor data
         if (ggml_nelements(ggml_tensor) == ggml_nelements(ggml_tensor->view_src)) {

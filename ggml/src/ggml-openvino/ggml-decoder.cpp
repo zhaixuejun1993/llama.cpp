@@ -1001,7 +1001,18 @@ void GgmlOvDecoder::compute_cgraph_dynamic_dims() {
         case GGML_OP_GET_ROWS:
             m_node_dynamic_dims[node] = -1;
             if (m_node_dynamic_dims[node->src[1]] != -1) {
-                m_node_dynamic_dims[node] = 1;
+                auto dynamic_dim_idx = m_node_dynamic_dims[node->src[1]];
+                auto dynamic_dim_value = node->src[1]->ne[dynamic_dim_idx];
+                int same_dim_count = 0;
+                for (int i = 0; i < 4; i++) {
+                    if (node->ne[i] == dynamic_dim_value) {
+                        m_node_dynamic_dims[node] = i;
+                        same_dim_count++;
+                    }
+                }
+                if (same_dim_count != 1) {
+                    std::cout << "Cannot determine dynamic dim for node: " << node->name << std::endl;
+                }
             }
             break;
         case GGML_OP_MUL:
@@ -1018,6 +1029,7 @@ void GgmlOvDecoder::compute_cgraph_dynamic_dims() {
         case GGML_OP_FLASH_ATTN_EXT:
         case GGML_OP_PERMUTE:
         case GGML_OP_RESHAPE:
+        case GGML_OP_CONT:
             m_node_dynamic_dims[node] = -1;
             if (m_node_dynamic_dims[node->src[0]] != -1) {
                 auto dynamic_dim_idx = m_node_dynamic_dims[node->src[0]];
@@ -1039,7 +1051,14 @@ void GgmlOvDecoder::compute_cgraph_dynamic_dims() {
         case GGML_OP_GLU:
         case GGML_OP_ROPE:
         case GGML_OP_SCALE:
+        case GGML_OP_TRANSPOSE:
+        case GGML_OP_SOFT_MAX:
+        case GGML_OP_ARGSORT:
+        case GGML_OP_ADD_ID:
             m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[0]];
+            break;
+        case GGML_OP_MUL_MAT_ID:
+            m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[1]];
             break;
         case GGML_OP_CPY:
         case GGML_OP_SET_ROWS:
@@ -1055,6 +1074,24 @@ void GgmlOvDecoder::compute_cgraph_dynamic_dims() {
         ggml_tensor * node = m_cgraph->nodes[i];
         visit_node(visit_node, node);
     }
+
+    // print the nodes in m_cgraph name & shape with the dynamic dim (the dynamic dim is the dimension with -1 in m_node_dynamic_dims) for debugging
+    // for (int i = 0; i < m_cgraph->n_nodes; i++) {
+    //     ggml_tensor * node = m_cgraph->nodes[i];
+    //     int dynamic_dim = m_node_dynamic_dims[node];
+    //     std::cout << "Node name: " << node->name << " shape: [";
+    //     for (int j = 0; j < 4; j++) {
+    //         if (j == dynamic_dim) {
+    //             std::cout << "*";
+    //         } else {
+    //             std::cout << node->ne[j];
+    //         }
+    //         if (j < 3) {
+    //             std::cout << ", ";
+    //         }
+    //     }
+    //     std::cout << "] dynamic_dim: " << dynamic_dim << std::endl;
+    // }
 }
 
 /**
@@ -1086,6 +1123,18 @@ void GgmlOvDecoder::add_extra_model_outputs_for_fallback() {
         if (node->op == GGML_OP_VIEW) {
             continue;
         }
+
+        // graph->use_counts[ggml_hash_find(&graph->visited_hash_set, node)]
+        // if the use count is 0, it means this node is not used by any other node, we can skip it as output
+        if (m_cgraph->use_counts[ggml_hash_find(&m_cgraph->visited_hash_set, node)] == 0) {
+            continue;
+        }
+
+        // if the use count is 1, and the node had been used in the graph, we can skip it as output because it means this node is only used by one other node, and that node will be the output of the graph, we don't need to add this node as output
+        // if (m_cgraph->use_counts[ggml_hash_find(&m_cgraph->visited_hash_set, node)] == 1 &&
+        //     ggml_hash_find(&m_cgraph->visited_hash_set, node) != -1) {
+        //     continue;
+        // }
         address_map[node->data] = node;
     }
 
