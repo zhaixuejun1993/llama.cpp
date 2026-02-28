@@ -63,6 +63,7 @@ GgmlOvDecoder::GgmlOvDecoder(ggml_cgraph * cgraph,
 #endif
         print_tensor_address_map(cgraph);
     }
+    print_tensor_address_map(cgraph);
 
     validate_cgraph();
 
@@ -286,7 +287,7 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
     }
     case GGML_OP_MUL_MAT: {
         if (node->src[0]->op == GGML_OP_CONT && node->src[0]->src[0]->op == GGML_OP_TRANSPOSE) {
-            op_case = 2;
+            op_case = 0;
         } else if (node->src[0]->op == GGML_OP_VIEW && node->src[1]->op == GGML_OP_VIEW) {
             op_case = 3;
         }
@@ -388,6 +389,14 @@ std::pair<ModelParams, ComputeParams> GgmlOvDecoder::compute_llm_params(ggml_cgr
                 compute_params.token_len_per_seq = 1;
             }
             break;
+        }
+        // if the node op is TRANSPOSE and its input is PERMUTE and the source of the PERMUTE is VIEW, then get the attention size with the TRANSPOSE node ne[0] (in case no GGML_OP_FLASH_ATTN_EXT)
+        if (node->op == GGML_OP_TRANSPOSE && node->src[0]->op == GGML_OP_PERMUTE &&
+            node->src[0]->src[0]->op == GGML_OP_VIEW) {
+            compute_params.attention_size = node->ne[0];
+            if (is_static) {
+                compute_params.attention_size = model_params.ctx_per_seq;
+            }
         }
         if (node->op == GGML_OP_ROPE) {
             memcpy(model_params.rope_params, node->op_params, sizeof(int32_t) * 15);
@@ -849,6 +858,14 @@ const std::string & GgmlOvDecoder::get_op_name(int node_idx) const {
     return m_node_info_list[node_idx].node_name;
 }
 
+int32_t GgmlOvDecoder::get_op_dynamic_dim(int node_idx) const {
+    auto it = m_node_dynamic_dims.find(m_node_info_list[node_idx].node);
+    if (it == m_node_dynamic_dims.end()) {
+        throw std::runtime_error("Dynamic dim not found for node: " + std::string(m_node_info_list[node_idx].node->name));
+    }
+    return it->second;
+}
+
 int32_t * GgmlOvDecoder::get_input_op_params(int node_idx, const std::string & name) const {
     return m_node_info_list[node_idx].node_inputs.at(name)->op_params;
 }
@@ -1076,22 +1093,22 @@ void GgmlOvDecoder::compute_cgraph_dynamic_dims() {
     }
 
     // print the nodes in m_cgraph name & shape with the dynamic dim (the dynamic dim is the dimension with -1 in m_node_dynamic_dims) for debugging
-    // for (int i = 0; i < m_cgraph->n_nodes; i++) {
-    //     ggml_tensor * node = m_cgraph->nodes[i];
-    //     int dynamic_dim = m_node_dynamic_dims[node];
-    //     std::cout << "Node name: " << node->name << " shape: [";
-    //     for (int j = 0; j < 4; j++) {
-    //         if (j == dynamic_dim) {
-    //             std::cout << "*";
-    //         } else {
-    //             std::cout << node->ne[j];
-    //         }
-    //         if (j < 3) {
-    //             std::cout << ", ";
-    //         }
-    //     }
-    //     std::cout << "] dynamic_dim: " << dynamic_dim << std::endl;
-    // }
+    for (int i = 0; i < m_cgraph->n_nodes; i++) {
+        ggml_tensor * node = m_cgraph->nodes[i];
+        int dynamic_dim = m_node_dynamic_dims[node];
+        std::cout << "Node name: " << node->name << " shape: [";
+        for (int j = 0; j < 4; j++) {
+            if (j == dynamic_dim) {
+                std::cout << "*";
+            } else {
+                std::cout << node->ne[j];
+            }
+            if (j < 3) {
+                std::cout << ", ";
+            }
+        }
+        std::cout << "] dynamic_dim: " << dynamic_dim << std::endl;
+    }
 }
 
 /**
@@ -1140,6 +1157,23 @@ void GgmlOvDecoder::add_extra_model_outputs_for_fallback() {
 
     for (const auto & pair : address_map) {
         const std::string & name = pair.second->name;
+        // check the pair.second's use count in the graph, if the use count is 0, it means this node is not used by any other node, we can skip it as output. 
+        // if the use count !=0, check the pair.second is used as input of any node in the graph and statistic the number used as input, if the number is the same as the node use count in the graph, it means this node is only used as input of other nodes, we can skip it as output because it means this node is only used by other nodes, and those nodes will be the output of the graph, we don't need to add this node as output
+        if (m_cgraph->use_counts[ggml_hash_find(&m_cgraph->visited_hash_set, pair.second)] == 0) {
+            continue;
+        }
+        int input_use_count = 0;
+        for (int i = 0; i < m_cgraph->n_nodes; i++) {
+            ggml_tensor * node = m_cgraph->nodes[i];
+            for (int j = 0; j < GGML_MAX_SRC; j++) {
+                if (node->src[j] != NULL && node->src[j] == pair.second) {
+                    input_use_count++;
+                }
+            }
+        }
+        if (input_use_count == m_cgraph->use_counts[ggml_hash_find(&m_cgraph->visited_hash_set, pair.second)]) {
+            continue;
+        }
         if (m_model_outputs.find(name) == m_model_outputs.end()) {
             m_model_outputs[name] = pair.second;
         }

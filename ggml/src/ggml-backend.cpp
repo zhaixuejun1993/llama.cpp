@@ -1313,11 +1313,11 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
                         ggml_backend_t backend = sched->backends[cur_backend_id];
                         for (int c = 0; c < sched->n_copies; c++) {
                             //if the node op is CONT & the src tensor is PERMUTE, set the tensor_copy's nb to be the same as src to enable the CONT optimization in ggml-alloc
-                            if (node->op == GGML_OP_CONT && src->op == GGML_OP_PERMUTE) {
-                                for (int d = 1; d < GGML_MAX_DIMS; d++) {
-                                    src->nb[d] = src->nb[d-1] * src->ne[d-1];
-                                }
-                            }
+                            // if (node->op == GGML_OP_CONT && src->op == GGML_OP_PERMUTE) {
+                            //     for (int d = 1; d < GGML_MAX_DIMS; d++) {
+                            //         src->nb[d] = src->nb[d-1] * src->ne[d-1];
+                            //     }
+                            // }
                             struct ggml_tensor * tensor_copy = ggml_dup_tensor_layout(sched->ctx, src);
                             ggml_format_name(tensor_copy, "%s#%s#%d", ggml_backend_name(backend), src->name, c);
                             if (sched->n_copies > 1) {
