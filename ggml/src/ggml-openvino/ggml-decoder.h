@@ -268,14 +268,17 @@ public:
 private:
     void set_input_output(ggml_tensor * node);
     int compute_op_case(const ggml_tensor * node) const;
+    void compute_model_inputs();
     void compute_model_outputs();
 
     void validate_cgraph() const;
 
     ggml_cgraph * m_cgraph = nullptr;
     std::map<std::string, ggml_tensor *> m_inputs;
+    std::map<std::string, ggml_tensor *> m_inputs_test;
 
     std::map<std::string, std::shared_ptr<ov::Node>> m_model_inputs;
+    std::map<std::string, std::shared_ptr<ov::Node>> m_model_inputs_test;
     std::map<std::string, std::shared_ptr<ov::Node>> m_model_extra_inputs;
     std::map<std::string, std::shared_ptr<ov::Tensor>> m_model_extra_input_values;
     std::map<std::string, std::shared_ptr<ov::Node>> m_model_weights;
