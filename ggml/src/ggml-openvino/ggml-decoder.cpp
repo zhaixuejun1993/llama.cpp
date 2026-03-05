@@ -67,7 +67,7 @@ GgmlOvDecoder::GgmlOvDecoder(ggml_cgraph * cgraph,
 
     validate_cgraph();
 
-    set_input_output();
+    initialize_node_input_output();
     compute_model_inputs();
     compute_model_outputs();
 
@@ -93,7 +93,7 @@ GgmlOvDecoder::GgmlOvDecoder(ggml_cgraph * cgraph, std::map<std::string, std::sh
     m_cgraph = cgraph;
     m_model_weights = model_weights;
     m_naive = true;
-    set_input_output();
+    initialize_node_input_output();
     compute_model_inputs();
     compute_model_outputs();
     for (int node_n = 0; node_n < cgraph->n_nodes; node_n++) {
@@ -102,7 +102,7 @@ GgmlOvDecoder::GgmlOvDecoder(ggml_cgraph * cgraph, std::map<std::string, std::sh
     }
 }
 
-void GgmlOvDecoder::set_input_output() {
+void GgmlOvDecoder::initialize_node_input_output() {
     for (int node_n = 0; node_n < m_cgraph->n_nodes; node_n++) {
         auto node = m_cgraph->nodes[node_n];
 
