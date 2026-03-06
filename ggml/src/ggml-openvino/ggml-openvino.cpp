@@ -904,6 +904,12 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
         }
         break;
     }
+    case GGML_OP_VIEW: {
+        if (ggml_nelements(op) != ggml_nelements(op->src[0])) {
+            return true;
+        }
+        break;
+    }
     default:
         break;
     }
