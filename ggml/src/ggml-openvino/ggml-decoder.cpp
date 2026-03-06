@@ -960,3 +960,159 @@ const std::string & GgmlOvDecoder::get_op_type() const {
     static const std::string unknown_op = "UNKNOWN_GGML_OP";
     return unknown_op;
 }
+
+void GgmlOvDecoder::compute_node_dynamic_dims() {
+    auto visit_node = [&](auto && self, ggml_tensor * node) -> void {
+        if (!node) {
+            return;
+        }
+
+        if (node->op == GGML_OP_CPY) {
+            m_node_dynamic_dims[node] = -1;
+        }
+
+        if (m_node_dynamic_dims.count(node)) {
+            return;
+        }
+        for (int i = 0; i < GGML_MAX_SRC; i++) {
+            ggml_tensor * src = node->src[i];
+            if (src == nullptr) {
+                continue;
+            }
+            if (src->org_src) {
+                if (is_inp_tok(src->org_src, node) || is_inp_pos(src->org_src, node) ||
+                    is_output_idx(src->org_src, node)) {
+                    m_node_dynamic_dims[src->org_src] = 0;
+                    m_node_dynamic_dims[src] = m_node_dynamic_dims[src->org_src];
+                    continue;
+                }
+                self(self, src->org_src);
+                m_node_dynamic_dims[src] = m_node_dynamic_dims[src->org_src];
+            } else {
+                if (is_inp_tok(src, node) || is_inp_pos(src, node) || is_output_idx(src, node)) {
+                    m_node_dynamic_dims[src] = 0;
+                    continue;
+                }
+                self(self, src);
+            }
+        }
+        switch (node->op) {
+        case GGML_OP_NONE:
+            m_node_dynamic_dims[node] = -1;
+            break;
+        case GGML_OP_GET_ROWS:
+            m_node_dynamic_dims[node] = -1;
+            if (m_node_dynamic_dims[node->src[1]] != -1) {
+                auto dynamic_dim_idx = m_node_dynamic_dims[node->src[1]];
+                auto dynamic_dim_value = node->src[1]->ne[dynamic_dim_idx];
+                int same_dim_count = 0;
+                for (int i = 0; i < 4; i++) {
+                    if (node->ne[i] == dynamic_dim_value) {
+                        m_node_dynamic_dims[node] = i;
+                        same_dim_count++;
+                    }
+                }
+                if (same_dim_count != 1) {
+                    std::cout << "Cannot determine dynamic dim for node: " << node->name << std::endl;
+                }
+            }
+            break;
+        case GGML_OP_MUL:
+        case GGML_OP_MUL_MAT:
+            m_node_dynamic_dims[node] = -1;
+            if (m_node_dynamic_dims[node->src[0]] != -1) {
+                m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[0]];
+            }
+            if (m_node_dynamic_dims[node->src[1]] != -1) {
+                m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[1]];
+            }
+            break;
+        case GGML_OP_VIEW:
+        case GGML_OP_FLASH_ATTN_EXT:
+        case GGML_OP_PERMUTE:
+        case GGML_OP_RESHAPE:
+        case GGML_OP_CONT:
+            m_node_dynamic_dims[node] = -1;
+            if (m_node_dynamic_dims[node->src[0]] != -1) {
+                auto dynamic_dim_idx = m_node_dynamic_dims[node->src[0]];
+                auto dynamic_dim_value = node->src[0]->ne[dynamic_dim_idx];
+                int same_dim_count = 0;
+                for (int i = 0; i < 4; i++) {
+                    if (node->ne[i] == dynamic_dim_value) {
+                        m_node_dynamic_dims[node] = i;
+                        same_dim_count++;
+                    }
+                }
+                if (same_dim_count != 1) {
+                    std::cout << "Cannot determine dynamic dim for node: " << node->name << std::endl;
+                }
+            }
+            break;
+        case GGML_OP_RMS_NORM:
+        case GGML_OP_ADD:
+        case GGML_OP_GLU:
+        case GGML_OP_ROPE:
+        case GGML_OP_SCALE:
+        case GGML_OP_TRANSPOSE:
+        case GGML_OP_SOFT_MAX:
+        case GGML_OP_ARGSORT:
+        case GGML_OP_ADD_ID:
+            m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[0]];
+            break;
+        case GGML_OP_MUL_MAT_ID:
+            m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[1]];
+            break;
+        case GGML_OP_CPY:
+        case GGML_OP_SET_ROWS:
+            m_node_dynamic_dims[node] = -1;
+            break;
+        default:
+            std::cout << "Doesn't handle node name: " << node->name << " op: " << ggml_op_name(node->op) << std::endl;
+            break;
+        }
+    };
+
+    for (int i = 0; i < m_cgraph->n_nodes; i++) {
+        ggml_tensor * node = m_cgraph->nodes[i];
+        visit_node(visit_node, node);
+    }
+
+    // print the nodes in m_cgraph name & shape with the dynamic dim (the dynamic dim is the dimension with -1 in m_node_dynamic_dims) for debugging
+    for (int i = 0; i < m_cgraph->n_nodes; i++) {
+        ggml_tensor * node = m_cgraph->nodes[i];
+        int dynamic_dim = m_node_dynamic_dims[node];
+        std::cout << "["<< i << "] "<< "node_name: " << node->name << " op: " << ggml_op_name(node->op) << " shape: [";
+        for (int j = 0; j < 4; j++) {
+            if (j == dynamic_dim) {
+                std::cout << "*";
+            } else {
+                std::cout << node->ne[j];
+            }
+            if (j < 3) {
+                std::cout << ", ";
+            }
+        }
+        std::cout << "]" << std::endl;
+        // print the src name & shape with the dynamic dim for debugging
+        for (int j = 0; j < GGML_MAX_SRC; j++) {
+            ggml_tensor * src = node->src[j];
+            if (src == nullptr) {
+                continue;
+            }
+            int src_dynamic_dim = m_node_dynamic_dims[src];
+            std::cout << "    [" << j << "] src_name: " << src->name << " [";
+            for (int k = 0; k < 4; k++) {
+                if (k == src_dynamic_dim) {
+                    std::cout << "*";
+                } else {
+                    std::cout << src->ne[k];
+                }
+                if (k < 3) {
+                    std::cout << ", ";
+                }
+            }
+            std::cout << "]" << std::endl;
+        }
+        std::cout << std::endl;
+    }
+}
