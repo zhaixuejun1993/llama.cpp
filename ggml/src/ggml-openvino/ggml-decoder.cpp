@@ -992,7 +992,8 @@ void GgmlOvDecoder::compute_cgraph_dynamic_dims() {
                 continue;
             }
             if (src->org_src) {
-                if (is_inp_tok(src->org_src, node) || is_inp_pos(src->org_src, node) || is_output_idx(src->org_src, node)) {
+                if (is_inp_tok(src->org_src, node) || is_inp_pos(src->org_src, node) ||
+                    is_output_idx(src->org_src, node)) {
                     m_node_dynamic_dims[src->org_src] = 0;
                     m_node_dynamic_dims[src] = m_node_dynamic_dims[src->org_src];
                     continue;
@@ -1010,10 +1011,6 @@ void GgmlOvDecoder::compute_cgraph_dynamic_dims() {
         switch (node->op) {
         case GGML_OP_NONE:
             m_node_dynamic_dims[node] = -1;
-            // if (std::string(node->name) == "inp_tokens" || std::string(node->name) == "inp_pos" ||
-            //     std::string(node->name) == "inp_out_ids") {
-            //     m_node_dynamic_dims[node] = 0;
-            // }
             break;
         case GGML_OP_GET_ROWS:
             m_node_dynamic_dims[node] = -1;
@@ -1096,7 +1093,7 @@ void GgmlOvDecoder::compute_cgraph_dynamic_dims() {
     for (int i = 0; i < m_cgraph->n_nodes; i++) {
         ggml_tensor * node = m_cgraph->nodes[i];
         int dynamic_dim = m_node_dynamic_dims[node];
-        std::cout << "Node name: " << node->name << " shape: [";
+        std::cout << "["<< i << "] "<< "node_name: " << node->name << " op: " << ggml_op_name(node->op) << " shape: [";
         for (int j = 0; j < 4; j++) {
             if (j == dynamic_dim) {
                 std::cout << "*";
@@ -1107,7 +1104,28 @@ void GgmlOvDecoder::compute_cgraph_dynamic_dims() {
                 std::cout << ", ";
             }
         }
-        std::cout << "] dynamic_dim: " << dynamic_dim << std::endl;
+        std::cout << "]" << std::endl;
+        // print the src name & shape with the dynamic dim for debugging
+        for (int j = 0; j < GGML_MAX_SRC; j++) {
+            ggml_tensor * src = node->src[j];
+            if (src == nullptr) {
+                continue;
+            }
+            int src_dynamic_dim = m_node_dynamic_dims[src];
+            std::cout << "    [" << j << "] src_name: " << src->name << " [";
+            for (int k = 0; k < 4; k++) {
+                if (k == src_dynamic_dim) {
+                    std::cout << "*";
+                } else {
+                    std::cout << src->ne[k];
+                }
+                if (k < 3) {
+                    std::cout << ", ";
+                }
+            }
+            std::cout << "]" << std::endl;
+        }
+        std::cout << std::endl;
     }
 }
 
