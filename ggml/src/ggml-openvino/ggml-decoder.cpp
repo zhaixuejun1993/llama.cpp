@@ -1116,3 +1116,11 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
         std::cout << std::endl;
     }
 }
+
+int32_t GgmlOvDecoder::get_node_dynamic_dim(int node_idx) const {
+    auto it = m_node_dynamic_dims.find(m_node_info_list[node_idx].node);
+    if (it == m_node_dynamic_dims.end()) {
+        throw std::runtime_error("Dynamic dim not found for node: " + std::string(m_node_info_list[node_idx].node->name));
+    }
+    return it->second;
+}

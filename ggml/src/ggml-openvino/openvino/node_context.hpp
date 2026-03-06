@@ -59,6 +59,10 @@ public:
         return m_decoder->get_input_op_params(m_node_idx, m_input_names[index]);
     }
 
+    int32_t get_node_dynamic_dim() const {
+        return m_decoder->get_node_dynamic_dim(m_node_idx);
+    }
+
     int32_t * get_output_op_params() const { return m_decoder->get_output_op_params(m_node_idx); }
 
     ov::element::Type get_output_type() const {
