@@ -66,10 +66,12 @@ GgmlOvDecoder::GgmlOvDecoder(ggml_cgraph * cgraph,
 #endif
         print_tensor_address_map(cgraph);
     }
+    m_node_dynamic_dims.clear();
 
     validate_cgraph();
 
     set_input_output();
+    compute_node_dynamic_dims();
     compute_model_inputs();
     compute_model_outputs();
 
@@ -196,7 +198,7 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
     }
     case GGML_OP_MUL_MAT: {
         if (node->src[0]->op == GGML_OP_CONT && node->src[0]->src[0]->op == GGML_OP_TRANSPOSE) {
-            op_case = 2;
+            op_case = 0;
         } else if (node->src[0]->op == GGML_OP_VIEW && node->src[1]->op == GGML_OP_VIEW) {
             op_case = 3;
         }
@@ -221,6 +223,10 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
                 throw std::runtime_error("Unsupported VIEW case");
             }
             op_case = 2;
+            if (m_model_is_splitted && m_model_inputs.find(std::string(src->name)) != m_model_inputs.end()) {
+                op_case = 0;
+            }
+
         }
         break;
     }
@@ -296,6 +302,16 @@ std::pair<ModelParams, ComputeParams> GgmlOvDecoder::compute_llm_params(ggml_cgr
             }
             break;
         }
+
+        // if the node op is TRANSPOSE and its input is PERMUTE and the source of the PERMUTE is VIEW, then get the attention size with the TRANSPOSE node ne[0] (in case no GGML_OP_FLASH_ATTN_EXT)
+        if (node->op == GGML_OP_TRANSPOSE && node->src[0]->op == GGML_OP_PERMUTE &&
+            node->src[0]->src[0]->op == GGML_OP_VIEW) {
+            compute_params.attention_size = node->ne[0];
+            if (is_static) {
+                compute_params.attention_size = model_params.ctx_per_seq;
+            }
+        }
+
         if (node->op == GGML_OP_ROPE) {
             memcpy(model_params.rope_params, node->op_params, sizeof(int32_t) * 15);
         }
@@ -317,7 +333,7 @@ void GgmlOvDecoder::validate_cgraph() const {
     }
 }
 
-ov::PartialShape GgmlOvDecoder::get_graph_input_shape(const ggml_tensor * op, const ggml_tensor * input) const {
+ov::PartialShape GgmlOvDecoder::get_graph_input_shape(const ggml_tensor * op, const ggml_tensor * input, int dynamic_dim_index) const {
     if (m_naive) {
         return input!= nullptr ? ov::PartialShape{get_shape(input)} : ov::PartialShape{get_shape(op)};
     }
@@ -368,6 +384,11 @@ ov::PartialShape GgmlOvDecoder::get_graph_input_shape(const ggml_tensor * op, co
     } else {
         input_shape = ov::PartialShape{get_shape(input)};
     }
+
+    if (dynamic_dim_index != -1) {
+        input_shape[3 - dynamic_dim_index] = -1;
+    }
+
     return input_shape;
 }
 
@@ -430,15 +451,15 @@ void GgmlOvDecoder::compute_model_inputs() {
             if (m_model_weights.find(node_name) == m_model_weights.end()) {
                 m_inputs[node_name] = node;
                 auto param_node =
-                    std::make_shared<ov::op::v0::Parameter>(get_ov_type(node), get_graph_input_shape(node, nullptr));
+                    std::make_shared<ov::op::v0::Parameter>(get_ov_type(node), get_graph_input_shape(node, nullptr, get_node_dynamic_dim(i)));
                 param_node->set_friendly_name(node_name);
                 param_node->output(0).get_tensor().set_names({node_name});
                 m_model_inputs[node_name] = param_node;
             }
             continue;
         }
-        for (int i = 0; i < GGML_MAX_SRC; i++) {
-            auto * src = node->src[i];
+        for (int j = 0; j < GGML_MAX_SRC; j++) {
+            auto * src = node->src[j];
             if (src == nullptr) {
                 continue;
             }
@@ -474,7 +495,7 @@ void GgmlOvDecoder::compute_model_inputs() {
                     m_model_params.kv_names.push_back(src_name);
                 }
             }
-            ov::PartialShape param_shape = get_graph_input_shape(node, src);
+            ov::PartialShape param_shape = get_graph_input_shape(node, src, get_node_dynamic_dim(i));
             auto param_node = std::make_shared<ov::op::v0::Parameter>(get_ov_type(src), param_shape);
             param_node->set_friendly_name(src_name);
             param_node->output(0).get_tensor().set_names({src_name});
@@ -1120,7 +1141,7 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
 int32_t GgmlOvDecoder::get_node_dynamic_dim(int node_idx) const {
     auto it = m_node_dynamic_dims.find(m_node_info_list[node_idx].node);
     if (it == m_node_dynamic_dims.end()) {
-        throw std::runtime_error("Dynamic dim not found for node: " + std::string(m_node_info_list[node_idx].node->name));
+        return -1;
     }
     return it->second;
 }

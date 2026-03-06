@@ -182,7 +182,7 @@ public:
 
     virtual int32_t get_node_dynamic_dim(int node_idx) const override;
 
-    ov::PartialShape get_graph_input_shape(const ggml_tensor * op, const ggml_tensor * input) const;
+    ov::PartialShape get_graph_input_shape(const ggml_tensor * op, const ggml_tensor * input, int dynamic_dim_index=-1) const;
 
     static void dump_cgraph(const ggml_cgraph * cgraph, std::string & filename);
 
