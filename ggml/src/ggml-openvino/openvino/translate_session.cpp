@@ -78,10 +78,9 @@ ov::pass::MakeStateful::ParamResPairs get_kv_param_res_pairs(
 }
 
 void add_sliced_mask(TensorMap & tensor_map, GgmlDecoder & ggml_model_decoder) {
-    auto token_len_per_seq = tensor_map.at("token_len_per_seq").get_node_shared_ptr();
-
     auto create_sliced_mask = [&](const std::string & mask_name, const std::string & sliced_name, bool is_static) {
-        if (tensor_map.find(mask_name) != tensor_map.end()) {
+        if ((tensor_map.find(mask_name) != tensor_map.end()) && (tensor_map.find("token_len_per_seq") != tensor_map.end())) {
+            auto token_len_per_seq = tensor_map.at("token_len_per_seq").get_node_shared_ptr();
             auto mask = tensor_map.at(mask_name).get_node_shared_ptr();
             std::shared_ptr<ov::Node> mask_sliced;
             if (is_static) {
@@ -119,24 +118,21 @@ void add_sliced_mask(TensorMap & tensor_map, GgmlDecoder & ggml_model_decoder) {
 }
 
 void add_rope_sin_cos(TensorMap & tensor_map, GgmlDecoder & ggml_model_decoder) {
-    int32_t * rope_params = ggml_model_decoder.get_rope_params();
-    if (tensor_map.find("inp_pos") == tensor_map.end() || rope_params == nullptr) {
-        return;
-    }
-    auto inp_pos = tensor_map.at("inp_pos").get_node_shared_ptr();
-    std::shared_ptr<ov::Node> rope_freqs_weight;
-    if (tensor_map.find("rope_freqs.weight") != tensor_map.end()) {
-        rope_freqs_weight = tensor_map.at("rope_freqs.weight").get_node_shared_ptr();
-    }
+    if ((tensor_map.find("rope_freqs_weight") != tensor_map.end()) &&
+        (tensor_map.find("inp_pos") != tensor_map.end())) {
+        int32_t * rope_params = ggml_model_decoder.get_rope_params();
+        auto inp_pos = tensor_map.at("inp_pos").get_node_shared_ptr();
+        auto rope_freqs_weight = tensor_map.at("rope_freqs.weight").get_node_shared_ptr();
 
-    auto sin_cos = make_sin_cos(rope_params, inp_pos, rope_freqs_weight);
-    auto sin_theta = sin_cos.first;
-    auto cos_theta = sin_cos.second;
+        auto sin_cos = make_sin_cos(rope_params, inp_pos, rope_freqs_weight);
+        auto sin_theta = sin_cos.first;
+        auto cos_theta = sin_cos.second;
 
-    cos_theta.get_node_shared_ptr()->set_friendly_name("rope_cos");
-    sin_theta.get_node_shared_ptr()->set_friendly_name("rope_sin");
-    tensor_map.insert({"rope_cos", cos_theta});
-    tensor_map.insert({"rope_sin", sin_theta});
+        cos_theta.get_node_shared_ptr()->set_friendly_name("rope_cos");
+        sin_theta.get_node_shared_ptr()->set_friendly_name("rope_sin");
+        tensor_map.insert({"rope_cos", cos_theta});
+        tensor_map.insert({"rope_sin", sin_theta});
+    }
 }
 
 // Create common patterns
