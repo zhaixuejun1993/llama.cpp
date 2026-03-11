@@ -676,7 +676,7 @@ OvWeight process_weight_tensor(const ggml_tensor * tensor, const void * data, vo
         OPENVINO_THROW("Unsupported quantized type: ", ggml_type_name(tensor->type));
     }
 
-    if (use_bias) {
+    if (0) {
         OPENVINO_ASSERT(!layout.is_requant,
                         "use_bias is only used for test-backend-ops, which should not have requantization");
         // bias node will be created on the fly and not use backend buffer

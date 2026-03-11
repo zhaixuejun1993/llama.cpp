@@ -855,28 +855,28 @@ static char * fmt_size(size_t size) {
 
 static void ggml_backend_sched_print_assignments(ggml_backend_sched_t sched, struct ggml_cgraph * graph) {
     int cur_split = 0;
-    for (int i = 0; i < graph->n_nodes; i++) {
+    for (int i = 0; i < 38; i++) {
         if (cur_split < sched->n_splits && i == sched->splits[cur_split].i_start) {
             ggml_backend_t split_backend = sched->backends[sched->splits[cur_split].backend_id];
-            GGML_LOG_DEBUG("\n## SPLIT #%d: %s # %d inputs", cur_split, ggml_backend_name(split_backend),
+            printf("\n## SPLIT #%d: %s # %d inputs", cur_split, ggml_backend_name(split_backend),
                 sched->splits[cur_split].n_inputs);
             for (int j = 0; j < sched->splits[cur_split].n_inputs; j++) {
                 if (j == 0) {
-                    GGML_LOG_DEBUG(": ");
+                    printf(": ");
                 }
-                GGML_LOG_DEBUG("[%s (%5.5s)] ", sched->splits[cur_split].inputs[j]->name,
+                printf("[%s (%5.5s)] ", sched->splits[cur_split].inputs[j]->name,
                     fmt_size(ggml_nbytes(sched->splits[cur_split].inputs[j])));
             }
-            GGML_LOG_DEBUG("\n");
+            printf("\n");
             cur_split++;
         }
         struct ggml_tensor * node = graph->nodes[i];
-        if (ggml_is_view_op(node->op)) {
-            continue;
-        }
-        if (sched->debug > 1) {
+        // if (ggml_is_view_op(node->op)) {
+        //     continue;
+        // }
+        if (2 > 1) {
             ggml_backend_t tensor_backend = ggml_backend_sched_get_tensor_backend(sched, node);
-            GGML_LOG_DEBUG("node #%3d (%10.10s): %20.20s (%5.5s) [%5.5s %8.8s] use=%d,c=%d:", i, ggml_op_name(node->op), node->name,
+            printf("node #%3d (%10.10s): %30.30s (%5.5s) [%5.5s %8.8s] use=%d,c=%d:", i, ggml_op_name(node->op), node->name,
                 fmt_size(ggml_nbytes(node)), tensor_backend ? ggml_backend_name(tensor_backend) : "NULL", GET_CAUSE(node),
                 graph->use_counts[ggml_hash_find(&graph->visited_hash_set, node)], node->flags & GGML_TENSOR_FLAG_COMPUTE ? 1 : 0);
             for (int j = 0; j < GGML_MAX_SRC; j++) {
@@ -885,10 +885,10 @@ static void ggml_backend_sched_print_assignments(ggml_backend_sched_t sched, str
                     continue;
                 }
                 ggml_backend_t src_backend = ggml_backend_sched_get_tensor_backend(sched, src);
-                GGML_LOG_DEBUG(" %20.20s (%5.5s) [%5.5s %8.8s]", src->name,
+                printf(" %30.30s (%5.5s) [%5.5s %8.8s]", src->name,
                     fmt_size(ggml_nbytes(src)), src_backend ? ggml_backend_name(src_backend) : "NULL", GET_CAUSE(src));
             }
-            GGML_LOG_DEBUG("\n");
+            printf("\n");
         }
     }
 }
@@ -977,6 +977,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
 #endif
         }
     }
+    ggml_backend_sched_print_assignments(sched, graph);
 
     // pass 2: expand current backend assignments
     // assign the same backend to adjacent nodes
@@ -1004,6 +1005,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
             }
         }
     }
+    ggml_backend_sched_print_assignments(sched, graph);
     // expand gpu up
     {
         int cur_backend_id = -1;
@@ -1057,6 +1059,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
             }
         }
     }
+    ggml_backend_sched_print_assignments(sched, graph);
 
     // pass 3: upgrade nodes to higher prio backends with compatible buffer types
     // if the tensor is already in the same buffer type (*) as another higher priority backend, we should move it there
@@ -1118,6 +1121,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
             }
         }
     }
+    ggml_backend_sched_print_assignments(sched, graph);
 
     // pass 4: assign backends to remaining src from dst and view_src
     for (int i = 0; i < graph->n_nodes; i++) {
@@ -1126,6 +1130,11 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
         if (node->view_src != NULL && *cur_backend_id == -1) {
             *cur_backend_id = tensor_backend_id(node->view_src);
             SET_CAUSE(node, "4.vsrc");
+            //  auto view_src_backend = tensor_backend_id(node->view_src);
+            // if (view_src_backend != -1 && ggml_backend_supports_op(sched->backends[view_src_backend], node)) {
+            //     *cur_backend_id = tensor_backend_id(node->view_src);
+            //     SET_CAUSE(node, "4.vsrc");
+            // }
         }
         for (int j = 0; j < GGML_MAX_SRC; j++) {
             struct ggml_tensor * src = node->src[j];
@@ -1150,6 +1159,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
         }
         GGML_ASSERT(*cur_backend_id != -1);
     }
+    ggml_backend_sched_print_assignments(sched, graph);
 
     // pass 5: split graph, find tensors that need to be copied
     {
@@ -1172,6 +1182,9 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
 
             if (ggml_is_view_op(node->op)) {
                 continue;
+                // if ((tensor_backend_id(node) != cur_backend_id) && (ggml_backend_supports_op(sched->backends[cur_backend_id], node))) {
+                //     tensor_backend_id(node) = cur_backend_id;
+                // }
             }
 
             const int node_backend_id = tensor_backend_id(node);
@@ -1263,6 +1276,26 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
                     if (tensor_id_copy(src_id, cur_backend_id, 0) == NULL) {
                         ggml_backend_t backend = sched->backends[cur_backend_id];
                         for (int c = 0; c < sched->n_copies; c++) {
+                        //     // if src op needs to be copied is RESHAPE TRANS, VIEW, PERMUTE, and the data copy from OV to other backends.
+                        //     // Cause the VIEW ops had done the data arrangement in OV backend, so when copy to other backend, have to change the stride info to avoid the other backends do it again.
+                        //     if (src->op == GGML_OP_RESHAPE || src->op == GGML_OP_TRANSPOSE || src->op == GGML_OP_VIEW ||
+                        //         src->op == GGML_OP_PERMUTE) {
+                        //         if (ggml_backend_name(backend) != "OpenVINO") {
+                        //             // find the minist value in src->nb
+                        //             size_t min_nb = src->nb[0];
+                        //             for (int d = 1; d < GGML_MAX_DIMS; d++) {
+                        //                 if (src->nb[d] < min_nb) {
+                        //                     min_nb = src->nb[d];
+                        //                 }
+                        //             }
+
+                        //             // re-calcute the nb based on the shape and the data type
+                        //             src->nb[0] = ggml_type_size(src->type);
+                        //             for (int d = 1; d < GGML_MAX_DIMS; d++) {
+                        //                 src->nb[d] = src->nb[d - 1] * src->ne[d - 1];
+                        //             }
+                        //         }
+                        //     }
                             struct ggml_tensor * tensor_copy = ggml_dup_tensor_layout(sched->ctx, src);
                             ggml_format_name(tensor_copy, "%s#%s#%d", ggml_backend_name(backend), src->name, c);
                             if (sched->n_copies > 1) {
@@ -1284,6 +1317,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
         sched->n_splits = i_split + 1;
     }
 
+    ggml_backend_sched_print_assignments(sched, graph);
     if (sched->debug) {
         ggml_backend_sched_print_assignments(sched, graph);
     }
