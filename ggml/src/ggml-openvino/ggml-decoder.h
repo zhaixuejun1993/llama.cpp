@@ -121,6 +121,8 @@ public:
 
     virtual const std::string & get_op_name(int node_idx) const override;
 
+    virtual int32_t get_op_dynamic_dim(int node_idx) const override;
+
     virtual void visit_subgraph(std::function<void(std::shared_ptr<GgmlDecoder>, int node_idx)> node_visitor) const override;
 
     ggml_tensor * get_input_ggml_tensor(const std::string & name) const { return m_inputs.at(name); }

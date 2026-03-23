@@ -196,7 +196,7 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
     }
     case GGML_OP_MUL_MAT: {
         if (node->src[0]->op == GGML_OP_CONT && node->src[0]->src[0]->op == GGML_OP_TRANSPOSE) {
-            op_case = 2;
+            op_case = 0;
         } else if (node->src[0]->op == GGML_OP_VIEW && node->src[1]->op == GGML_OP_VIEW) {
             op_case = 3;
         }
@@ -310,6 +310,14 @@ std::pair<ModelParams, ComputeParams> GgmlOvDecoder::compute_llm_params(ggml_cgr
                 compute_params.token_len_per_seq = 1;
             }
             break;
+        }
+        // if the node op is TRANSPOSE and its input is PERMUTE and the source of the PERMUTE is VIEW, then get the attention size with the TRANSPOSE node ne[0] (in case no GGML_OP_FLASH_ATTN_EXT)
+        if (node->op == GGML_OP_TRANSPOSE && node->src[0]->op == GGML_OP_PERMUTE &&
+            node->src[0]->src[0]->op == GGML_OP_VIEW) {
+            compute_params.attention_size = node->ne[0];
+            if (is_static) {
+                compute_params.attention_size = model_params.ctx_per_seq;
+            }
         }
         if (node->op == GGML_OP_ROPE) {
             memcpy(model_params.rope_params, node->op_params, sizeof(int32_t) * 15);
@@ -884,6 +892,14 @@ std::vector<std::string> GgmlOvDecoder::get_output_names(int node_idx) const {
 const std::string & GgmlOvDecoder::get_op_name() const {
     static const std::string unknown_name = "UNKNOWN_OP_NAME";
     return unknown_name;
+}
+
+int32_t GgmlOvDecoder::get_op_dynamic_dim(int node_idx) const {
+    auto it = m_node_dynamic_dims.find(m_node_info_list[node_idx].node);
+    if (it == m_node_dynamic_dims.end()) {
+        throw std::runtime_error("Dynamic dim not found for node: " + std::string(m_node_info_list[node_idx].node->name));
+    }
+    return it->second;
 }
 
 const std::string & GgmlOvDecoder::get_op_name(int node_idx) const {
