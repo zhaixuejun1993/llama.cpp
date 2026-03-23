@@ -998,9 +998,9 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
                 continue;
             }
             struct ggml_tensor *root_src = nullptr;
-            // if (src->org_src) {
-            //     root_src = src->org_src;
-            // }
+            if (src->org_src) {
+                root_src = src->org_src;
+            }
             if (root_src) {
                 if (is_inp_tok(root_src, node) || is_inp_pos(root_src, node) ||
                     is_output_idx(root_src, node)) {
