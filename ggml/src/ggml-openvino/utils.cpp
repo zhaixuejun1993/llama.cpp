@@ -96,6 +96,8 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
 
     std::shared_ptr<GgmlOvDecoder> ggml_decoder;
     std::shared_ptr<ov::InferRequest> infer_request;
+    std::vector<std::string> ov_input_names;
+    std::vector<std::string> ov_output_names;
     ModelParams m_params;
     ComputeParams c_params;
     std::tie(m_params, c_params) = GgmlOvDecoder::compute_llm_params(cgraph, is_static);
@@ -138,6 +140,8 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
             }
             ggml_decoder->add_extra_inputs();
             infer_request = r_ctx->infer_request_cache.at(key);
+            ov_input_names = r_ctx->ov_input_names_cache[key];
+            ov_output_names = r_ctx->ov_output_names_cache[key];
 
             if (stateful) {
                 const auto * inp_pos = get_inp_pos_tensor(cgraph);
@@ -211,19 +215,52 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
             }
             compile_end_time = ggml_time_us();
             infer_request = std::make_shared<ov::InferRequest>(compiled_model.create_infer_request());
-            r_ctx->infer_request_cache[key] = infer_request;
-            r_ctx->decoder_cache.at(key)->ptr = ggml_decoder;
 
-            std::vector<std::string> ov_input_names;
-            std::vector<std::string> ov_output_names;
+            // check model是dynamic还是dtastic 打印log说明模型是静态的
+            auto compiled_model_inputs = compiled_model.inputs();
+            // 需要遍历所有的输入输出，检查是否有dynamic的shape，如果是dynamic的就认为整个模型是dynamic的
+            bool model_is_dynamic = false;
+            for (const auto & input : compiled_model_inputs) {
+                auto input_shape = input.get_partial_shape();
+                if (input_shape.is_dynamic()) {
+                    model_is_dynamic = true;
+                    break;
+                }
+            }
+
+            // r_ctx->infer_request_cache[key] = infer_request;
+            // r_ctx->decoder_cache.at(key)->ptr = ggml_decoder;
+
+            std::vector<std::string> ov_input_names_tmp;
+            std::vector<std::string> ov_output_names_tmp;
             for (const auto & ov_param : model->get_parameters()) {
-                ov_input_names.push_back(ov_param->get_friendly_name());
+                ov_input_names_tmp.push_back(ov_param->get_friendly_name());
             }
             for (const auto & ov_output : model->get_results()) {
-                ov_output_names.push_back(ov_output->get_friendly_name());
+                ov_output_names_tmp.push_back(ov_output->get_friendly_name());
             }
-            r_ctx->ov_input_names_cache[key] = std::move(ov_input_names);
-            r_ctx->ov_output_names_cache[key] = std::move(ov_output_names);
+            if (model_is_dynamic) {
+                GGML_LOG_INFO("GGML OpenVINO backend: compiled model is dynamic\n");
+                r_ctx->infer_request_cache[key] = infer_request;
+                r_ctx->decoder_cache.at(key)->ptr = ggml_decoder;
+                r_ctx->ov_input_names_cache[key] = std::move(ov_input_names_tmp);
+                r_ctx->ov_output_names_cache[key] = std::move(ov_output_names_tmp);
+                ov_input_names = r_ctx->ov_input_names_cache[key];
+                ov_output_names = r_ctx->ov_output_names_cache[key];
+            } else {
+                GGML_LOG_INFO("GGML OpenVINO backend: compiled model is static\n");
+                // erase any existing cache for the same key to avoid stale cache issue
+                r_ctx->infer_request_cache.erase(key);
+                r_ctx->decoder_cache.erase(key);
+                r_ctx->ov_input_names_cache.erase(key);
+                r_ctx->ov_output_names_cache.erase(key);
+
+                ov_input_names = std::move(ov_input_names_tmp);
+                ov_output_names = std::move(ov_output_names_tmp);
+            }
+
+            // r_ctx->ov_input_names_cache[key] = std::move(ov_input_names_tmp);
+            // r_ctx->ov_output_names_cache[key] = std::move(ov_output_names_tmp);
 
             if (stateful) {
                 const auto * inp_pos = get_inp_pos_tensor(cgraph);
@@ -234,10 +271,12 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
                     r_ctx->kv_state_input_name_map[pair.first+pair.second] = pair.first;
                 }
             }
+            // ov_input_names = r_ctx->ov_input_names_cache[key];
+            // ov_output_names = r_ctx->ov_output_names_cache[key];
         }
 
-        auto ov_input_names = r_ctx->ov_input_names_cache[key];
-        auto ov_output_names = r_ctx->ov_output_names_cache[key];
+        // auto ov_input_names = r_ctx->ov_input_names_cache[key];
+        // auto ov_output_names = r_ctx->ov_output_names_cache[key];
 
         for (size_t i = 0; i < ov_input_names.size(); i++) {
             auto param_name = ov_input_names[i];
@@ -249,14 +288,56 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
             }
         }
 
-        for (size_t i = 0; i < ov_output_names.size(); i++) {
-            auto * ggml_tensor = ggml_decoder->get_model_outputs().at(ov_output_names[i]);
-            auto output_tensor = create_ov_output_tensor(ggml_decoder, infer_request, i, ggml_tensor);
-            infer_request->set_output_tensor(i, output_tensor);
+        // for (size_t i = 0; i < ov_output_names.size(); i++) {
+        //     auto * ggml_tensor = ggml_decoder->get_model_outputs().at(ov_output_names[i]);
+        //     auto output_tensor = create_ov_output_tensor(ggml_decoder, infer_request, i, ggml_tensor);
+        //     infer_request->set_output_tensor(i, output_tensor);
+        // }
+
+        // if the cgraph only have 1 node, compare the node input data addr and the output data addr, if the same pring log
+        bool can_be_inplace = true;
+        if (cgraph->n_nodes == 1) {
+            auto * node = cgraph->nodes[0];
+            auto * input_tensor = node->src[0];
+            if (input_tensor == nullptr) {
+                GGML_LOG_DEBUG("GGML OpenVINO backend: single-node graph has null input tensor, skip in-place check\n");
+            } else {
+                auto input_data_addr = input_tensor->data;
+                auto output_data_addr = node->data;
+                // Consider single-node execution in-place when a contiguous input shares/overlaps output memory.
+                const bool input_is_contiguous = ggml_is_contiguous(input_tensor);
+
+                if (!input_is_contiguous && (input_data_addr == output_data_addr)) {
+                    can_be_inplace = false;
+                }
+            }
+        }
+
+        if (can_be_inplace) {
+            for (size_t i = 0; i < ov_output_names.size(); i++) {
+                auto * ggml_tensor = ggml_decoder->get_model_outputs().at(ov_output_names[i]);
+                auto output_tensor = create_ov_output_tensor(ggml_decoder, infer_request, i, ggml_tensor);
+                infer_request->set_output_tensor(i, output_tensor);
+            }
         }
 
         infer_request->infer();
         infer_end_time = ggml_time_us();
+
+        if (!can_be_inplace) {
+            // auto ov_results = model->get_results();
+            // for (size_t i = 0; i < ov_results.size(); i++) {
+            //     auto output_tensor = infer_request->get_output_tensor(i);
+            //     auto * ggml_tensor = decoder->get_model_outputs().at(ov_results[i]->get_friendly_name());
+            //     std::memcpy(ggml_tensor->data, output_tensor.data(), output_tensor.get_byte_size());
+            // }
+
+            for (size_t i = 0; i < ov_output_names.size(); i++) {
+                auto * ggml_tensor = ggml_decoder->get_model_outputs().at(ov_output_names[i]);
+                auto output_tensor = infer_request->get_output_tensor(i);
+                std::memcpy(ggml_tensor->data, output_tensor.data(), output_tensor.get_byte_size());
+            }
+        }
 
         if (getenv("GGML_OPENVINO_DEBUG_OUTPUT")) {
             for (size_t i = 0; i < ov_output_names.size(); i++) {
@@ -502,6 +583,9 @@ bool is_model_splitted(ggml_cgraph * cgraph) {
         if ((cgraph->n_nodes <= 1 && use_count==0) || (cgraph->n_nodes <= 1 && node->op == GGML_OP_VIEW && use_count == 1 && node->src[0] != nullptr && node->src[0]->op == GGML_OP_NONE)) {
             return false;
         }
+        if (cgraph->n_nodes == 1 && (cgraph->nodes[0]->op == GGML_OP_TRANSPOSE || cgraph->nodes[0]->op == GGML_OP_PERMUTE)) {
+            return false;
+        }
         int input_use_count = 0;
         for (int j = 0; j < cgraph->n_nodes; j++) {
             ggml_tensor * other_node = cgraph->nodes[j];
@@ -605,7 +689,7 @@ namespace {
 ov::Tensor convert_ggml_input_to_ov(std::shared_ptr<GgmlOvDecoder> ggml_decoder, const std::string & name) {
     const auto * ggml_tensor = ggml_decoder->get_input_ggml_tensor(name);
 
-    if (ggml_tensor->extra != nullptr && !ggml_decoder->is_splited_model()) {
+    if (0) {
         // GGML_LOG_DEBUG("Using ggml_tensor->extra as ov::Tensor for input: %s\n", name.c_str());
         auto * extra_base = static_cast<ggml_openvino_extra_base *>(ggml_tensor->extra);
         if (extra_base->type != ggml_openvino_extra_base::Type::TENSOR) {
