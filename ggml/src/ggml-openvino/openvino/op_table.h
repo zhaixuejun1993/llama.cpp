@@ -18,6 +18,7 @@ GGML_OP_CONVERTER(translate_mulmat);
 GGML_OP_CONVERTER(translate_permute);
 GGML_OP_CONVERTER(translate_reshape);
 GGML_OP_CONVERTER(translate_rms_norm);
+GGML_OP_CONVERTER(translate_norm);
 GGML_OP_CONVERTER(translate_rope);
 GGML_OP_CONVERTER(translate_scale);
 GGML_OP_CONVERTER(translate_unary_silu);

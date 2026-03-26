@@ -934,6 +934,7 @@ std::string GgmlOvDecoder::compute_op_type(const ggml_tensor * node) {
         {GGML_OP_PERMUTE,        "GGML_OP_PERMUTE"       },
         {GGML_OP_RESHAPE,        "GGML_OP_RESHAPE"       },
         {GGML_OP_RMS_NORM,       "GGML_OP_RMS_NORM"      },
+        {GGML_OP_NORM,           "GGML_OP_NORM"          },
         {GGML_OP_ROPE,           "GGML_OP_ROPE"          },
         {GGML_OP_SCALE,          "GGML_OP_SCALE"         },
         {GGML_OP_SOFT_MAX,       "GGML_OP_SOFT_MAX"      },
@@ -1187,6 +1188,7 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
             }
             break;
         case GGML_OP_RMS_NORM:
+        case GGML_OP_NORM:
         case GGML_OP_ADD:
         case GGML_OP_GLU:
         case GGML_OP_ROPE:

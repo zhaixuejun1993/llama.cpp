@@ -26,6 +26,7 @@ std::unordered_map<std::string, CreatorFunction> get_supported_ops() {
         {"GGML_OP_PERMUTE",        op::translate_permute                          },
         {"GGML_OP_RESHAPE",        op::translate_reshape                          },
         {"GGML_OP_RMS_NORM",       op::translate_rms_norm                         },
+        {"GGML_OP_NORM",           op::translate_norm                             },
         {"GGML_OP_ROPE",           op::translate_rope                             },
         {"GGML_OP_SCALE",          op::translate_scale                            },
         {"GGML_OP_SOFT_MAX",       op::translate_soft_max                         },
