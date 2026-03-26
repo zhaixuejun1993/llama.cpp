@@ -215,7 +215,7 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
         }
         {
             auto * src = node->src[0];
-            if ((ggml_nelements(node) != ggml_nelements(src)) && m_naive) {
+            if ((ggml_nelements(node) != ggml_nelements(src))) {
                 // Compare each dimension of node and src, if only one dimension differs then op_case=3
                 int diff_count = 0;
                 for (int i = 0; i < GGML_MAX_DIMS; i++) {
@@ -1024,6 +1024,10 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
                     m_node_dynamic_dims[src] = 0;
                     continue;
                 }
+                if ( node->op == GGML_OP_VIEW && src->op == GGML_OP_NONE) {
+                    m_node_dynamic_dims[src] = 1;
+                    continue;
+                }
                 self(self, src);
             }
         }
@@ -1085,6 +1089,10 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
             // identifies the dynamic dim even when two dims share the same size.
             m_node_dynamic_dims[node] = -1;
             if (m_node_dynamic_dims[node->src[0]] != -1) {
+                if (node->src[0]->op == GGML_OP_NONE) {
+                    m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[0]];
+                    break;
+                }
                 auto dynamic_dim_idx   = m_node_dynamic_dims[node->src[0]];
                 auto dynamic_dim_value = node->src[0]->ne[dynamic_dim_idx];
                 auto dynamic_dim_stride =
@@ -1208,7 +1216,7 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
     }
 
     // print the nodes in m_cgraph name & shape with the dynamic dim (the dynamic dim is the dimension with -1 in m_node_dynamic_dims) for debugging
-    if (0) {
+    if (1) {
         for (int i = 0; i < m_cgraph->n_nodes; i++) {
             ggml_tensor * node = m_cgraph->nodes[i];
             int dynamic_dim = m_node_dynamic_dims[node];
