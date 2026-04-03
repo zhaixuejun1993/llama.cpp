@@ -15,17 +15,25 @@ struct graph_key {
     int n_nodes;
     std::string first_node_name;
     std::string last_node_name;
+    const ggml_tensor * first_node_ptr;
+    const ggml_tensor * last_node_ptr;
 
-    graph_key(const ggml_cgraph * cgraph) : n_nodes(cgraph->n_nodes) {
+    graph_key(const ggml_cgraph * cgraph) :
+        n_nodes(cgraph->n_nodes),
+        first_node_ptr(nullptr),
+        last_node_ptr(nullptr) {
         if (n_nodes > 0) {
             first_node_name = cgraph->nodes[0]->name;
             last_node_name = cgraph->nodes[n_nodes - 1]->name;
+            first_node_ptr = cgraph->nodes[0];
+            last_node_ptr = cgraph->nodes[n_nodes - 1];
         }
     }
 
     bool operator==(const graph_key & other) const {
         return n_nodes == other.n_nodes && first_node_name == other.first_node_name &&
-               last_node_name == other.last_node_name;
+               last_node_name == other.last_node_name && first_node_ptr == other.first_node_ptr &&
+               last_node_ptr == other.last_node_ptr;
     }
 };
 
@@ -35,6 +43,8 @@ struct graph_key_hash {
         if (key.n_nodes > 0) {
             h ^= std::hash<std::string>{}(key.first_node_name) + 0x9e3779b9 + (h << 6) + (h >> 2);
             h ^= std::hash<std::string>{}(key.last_node_name) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<const ggml_tensor *>{}(key.first_node_ptr) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<const ggml_tensor *>{}(key.last_node_ptr) + 0x9e3779b9 + (h << 6) + (h >> 2);
         }
         return h;
     }

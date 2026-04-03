@@ -841,10 +841,6 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
         break;
     }
     case GGML_OP_CPY: {
-        if (op->src[1] != op) {
-            // GGML_LOG_WARN("OpenVINO backend only supports CPY that is a cast\n");
-            return true;
-        }
         break;
     }
     case GGML_OP_MUL_MAT: {
@@ -894,6 +890,33 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
         }
         break;
     }
+    case GGML_OP_VIEW: {
+        // VIEW [512,*,1,1] -> [128,2,*,1] (Qcur_reshaped)
+        if (op->src[0] != nullptr &&
+            op->src[0]->ne[0] == 512 && op->src[0]->ne[2] == 1 && op->src[0]->ne[3] == 1 &&
+            op->ne[0] == 128 && op->ne[1] == 2) {
+            return true;
+        }
+        // VIEW [512,128,1,1] -> [256,2,128,1] (mamba_conv1d_silu)
+        if (op->src[0] != nullptr &&
+            op->src[0]->ne[0] == 512 && op->src[0]->ne[2] == 1 && op->src[0]->ne[3] == 1 &&
+            op->ne[0] == 256 && op->ne[1] == 2) {
+            return true;
+        }
+        // VIEW [128,128,1,1] -> [64,128,1,1] (mamba_dt_raw)
+        if (op->src[0] != nullptr &&
+            op->src[0]->ne[0] == 128 && op->src[0]->ne[2] == 1 && op->src[0]->ne[3] == 1 &&
+            op->ne[0] == 64 && op->ne[1] == 128) {
+            return true;
+        }
+        // VIEW [32,128,1,1] -> [32,1,128,1] (mamba_B_normed view, same nelements but ne[1]<->ne[2] swap)
+        if (op->src[0] != nullptr &&
+            op->src[0]->ne[0] == 32 && op->src[0]->ne[1] == 128 && op->src[0]->ne[2] == 1 && op->src[0]->ne[3] == 1 &&
+            op->ne[0] == 32 && op->ne[1] == 1 && op->ne[2] == 128 && op->ne[3] == 1) {
+            return true;
+        }
+        break;
+    }
     case GGML_OP_TRANSPOSE: {
         // if the type is bf16, will return true
         if (op->type == GGML_TYPE_BF16) {
@@ -924,9 +947,9 @@ static bool ggml_backend_openvino_device_supports_op(ggml_backend_dev_t dev, con
 
     static const std::set<ggml_op> supported_ops{GGML_OP_NONE, GGML_OP_ADD, GGML_OP_MUL, GGML_OP_MUL_MAT, GGML_OP_VIEW,
                                                  GGML_OP_CONT, GGML_OP_RESHAPE, GGML_OP_PERMUTE, GGML_OP_TRANSPOSE,
-                                                 GGML_OP_GET_ROWS, GGML_OP_ROPE, GGML_OP_RMS_NORM, GGML_OP_SCALE, GGML_OP_NORM,
+                                                 GGML_OP_GET_ROWS, GGML_OP_ROPE, GGML_OP_RMS_NORM, GGML_OP_SCALE, GGML_OP_NORM, GGML_OP_L2_NORM,
                                                  GGML_OP_SOFT_MAX,
-                                                 GGML_OP_SET_ROWS, GGML_OP_FLASH_ATTN_EXT, GGML_OP_CPY};
+                                                 GGML_OP_SET_ROWS, GGML_OP_FLASH_ATTN_EXT, GGML_OP_CPY, GGML_OP_PAD};
     static const std::set<ggml_unary_op> supported_unary_ops{
         GGML_UNARY_OP_SILU,
         GGML_UNARY_OP_TANH,

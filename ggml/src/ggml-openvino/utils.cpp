@@ -249,6 +249,24 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
             }
         }
 
+        // pring infer_request output port info for debugging
+        if (1) {
+            auto output_ports = infer_request->get_compiled_model().outputs();
+            GGML_LOG_INFO("Infer request output ports: \n");
+            for (size_t i = 0; i < output_ports.size(); i++) {
+                auto port = output_ports[i];
+                auto port_shape = port.get_partial_shape();
+                auto port_type = port.get_element_type();
+                auto port_names = port.get_names();
+                std::string names_str;
+                for (const auto & n : port_names) {
+                    if (!names_str.empty()) names_str += ", ";
+                    names_str += n;
+                }
+                printf("  - Output port %zu: name=%s, shape=%s, type=%s\n", i, names_str.c_str(), port_shape.to_string().c_str(), port_type.get_type_name().c_str());
+            }
+        }
+
         for (size_t i = 0; i < ov_output_names.size(); i++) {
             auto * ggml_tensor = ggml_decoder->get_model_outputs().at(ov_output_names[i]);
             auto output_tensor = create_ov_output_tensor(ggml_decoder, infer_request, i, ggml_tensor);

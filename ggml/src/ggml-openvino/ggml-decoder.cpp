@@ -164,6 +164,10 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
         } else if (src->ne[1] * src->ne[2] == node->ne[1]) {
             op_case = 6;
         }
+        // if the op case == 0 and the total number of elements is the same, it can be treated as reshape with no copy
+        if (op_case == 0 && ggml_nelements(node) == ggml_nelements(src)) {
+            op_case = 7;
+        }
         break;
     }
     case GGML_OP_PERMUTE: {
@@ -227,6 +231,19 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
                     node->nb[1] == src->nb[2] &&
                     src->ne[1] > 1) {
                     op_case = 4;
+                    break;
+                }
+
+                // Case 5: slice a contiguous chunk from dim0 and reshape into multiple dims.
+                // Pattern: src [A, B, ...] -> dst [C, D, B, ...] where C*D <= A
+                // Strides: nb[0]=type_size, nb[1]=C*type_size (contiguous), nb[2]=src->nb[1]
+                // Guard: at least dim0 or dim1 must differ, otherwise it's a higher-dim slice (case 3).
+                if (node->nb[0] == src->nb[0] &&
+                    node->ne[0] * node->ne[1] <= src->ne[0] &&
+                    node->nb[1] == (size_t)(node->ne[0]) * node->nb[0] &&
+                    node->nb[2] == src->nb[1] &&
+                    (node->ne[0] != src->ne[0] || node->ne[1] != src->ne[1])) {
+                    op_case = 5;
                     break;
                 }
 
@@ -318,7 +335,7 @@ std::pair<ModelParams, ComputeParams> GgmlOvDecoder::compute_llm_params(ggml_cgr
                 compute_params.attention_size_swa = model_params.ctx_per_seq_swa;
                 compute_params.token_len_per_seq = 1;
             }
-            break;
+            // break;
         }
         // if the node op is TRANSPOSE and its input is PERMUTE and the source of the PERMUTE is VIEW, then get the attention size with the TRANSPOSE node ne[0] (in case no GGML_OP_FLASH_ATTN_EXT)
         if (node->op == GGML_OP_TRANSPOSE && node->src[0]->op == GGML_OP_PERMUTE &&
@@ -962,6 +979,7 @@ std::string GgmlOvDecoder::compute_op_type(const ggml_tensor * node) {
         {GGML_OP_RESHAPE,        "GGML_OP_RESHAPE"       },
         {GGML_OP_RMS_NORM,       "GGML_OP_RMS_NORM"      },
         {GGML_OP_NORM,           "GGML_OP_NORM"          },
+        {GGML_OP_L2_NORM,        "GGML_OP_L2_NORM"       },
         {GGML_OP_ROPE,           "GGML_OP_ROPE"          },
         {GGML_OP_SCALE,          "GGML_OP_SCALE"         },
         {GGML_OP_SOFT_MAX,       "GGML_OP_SOFT_MAX"      },
@@ -971,6 +989,7 @@ std::string GgmlOvDecoder::compute_op_type(const ggml_tensor * node) {
         {GGML_OP_SET_ROWS,       "GGML_OP_SET_ROWS"      },
         {GGML_OP_CPY,            "GGML_OP_CPY"           },
         {GGML_OP_FLASH_ATTN_EXT, "GGML_OP_FLASH_ATTN_EXT"},
+        {GGML_OP_PAD,            "GGML_OP_PAD"           },
     };
     static const std::map<ggml_unary_op, std::string> unary_ops = {
         {GGML_UNARY_OP_ABS,         "GGML_UNARY_OP_ABS"        },
@@ -1041,7 +1060,9 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
             if (root_src) {
                 if (is_inp_tok(root_src, node) || is_inp_pos(root_src, node) ||
                     is_output_idx(root_src, node)) {
-                    m_node_dynamic_dims[root_src] = 0;
+                    if (!m_node_dynamic_dims.count(root_src)) {
+                        m_node_dynamic_dims[root_src] = 0;
+                    }
                     m_node_dynamic_dims[src] = m_node_dynamic_dims[root_src];
                     continue;
                 }
@@ -1049,7 +1070,9 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
                 m_node_dynamic_dims[src] = m_node_dynamic_dims[root_src];
             } else {
                 if (is_inp_tok(src, node) || is_inp_pos(src, node) || is_output_idx(src, node)) {
-                    m_node_dynamic_dims[src] = 0;
+                    if (!m_node_dynamic_dims.count(src)) {  // guard: don't overwrite
+                        m_node_dynamic_dims[src] = 0;
+                    }
                     continue;
                 }
                 if ( node->op == GGML_OP_VIEW && src->op == GGML_OP_NONE && !is_stateful() && !m_model_is_splitted) {
@@ -1087,6 +1110,9 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
             break;
         case GGML_OP_MUL:
         case GGML_OP_MUL_MAT:
+        case GGML_OP_SUB:
+        case GGML_OP_CONCAT:
+        case GGML_OP_SOLVE_TRI:
             m_node_dynamic_dims[node] = -1;
             if (m_node_dynamic_dims[node->src[0]] != -1) {
                 m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[0]];
@@ -1121,19 +1147,43 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
                     m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[0]];
                     break;
                 }
+
+                // Special case: VIEW from SSM_SCAN flat 1D output into multi-dim tensor.
+                // SSM_SCAN produces [total, 1, 1, 1] where total = nelements(x) + states.
+                // The y-extraction VIEW reshapes into [head_dim, n_head, n_seq_tokens, n_seqs],
+                // matching x (src[1] of SSM_SCAN). Inherit the dynamic dim from x.
+                if (node->src[0]->op == GGML_OP_SSM_SCAN &&
+                    node->src[0]->ne[1] == 1 && node->src[0]->ne[2] == 1 && node->src[0]->ne[3] == 1 &&
+                    (node->ne[1] > 1 || node->ne[2] > 1 || node->ne[3] > 1)) {
+                    auto * x_tensor = node->src[0]->src[1]; // x input of SSM_SCAN
+                    if (x_tensor && m_node_dynamic_dims.count(x_tensor) && m_node_dynamic_dims[x_tensor] != -1) {
+                        m_node_dynamic_dims[node] = m_node_dynamic_dims[x_tensor];
+                        break;
+                    }
+                }
+
                 auto dynamic_dim_idx   = m_node_dynamic_dims[node->src[0]];
                 auto dynamic_dim_value = node->src[0]->ne[dynamic_dim_idx];
                 auto dynamic_dim_stride =
                     node->src[0]->nb[dynamic_dim_idx] / ggml_type_size(node->src[0]->type) *
                     ggml_type_size(node->type);
                 for (int i = 0; i < GGML_MAX_DIMS; i++) {
-                    if (node->nb[i] == dynamic_dim_stride) {
+                    if (node->nb[i] == dynamic_dim_stride && node->ne[i] == dynamic_dim_value) {
                         m_node_dynamic_dims[node] = i;
                         break;
                     }
                 }
-                OPENVINO_ASSERT(m_node_dynamic_dims[node] != -1 &&
-                                dynamic_dim_value == node->ne[m_node_dynamic_dims[node]],
+                // Fallback: if ne-matching didn't find a match (e.g. VIEW sliced the
+                // dynamic dim itself), try stride-only matching.
+                if (m_node_dynamic_dims[node] == -1) {
+                    for (int i = 0; i < GGML_MAX_DIMS; i++) {
+                        if (node->nb[i] == dynamic_dim_stride) {
+                            m_node_dynamic_dims[node] = i;
+                            break;
+                        }
+                    }
+                }
+                OPENVINO_ASSERT(m_node_dynamic_dims[node] != -1,
                                 "Dynamic dim value mismatch for node: " + std::string(node->name) +
                                     " and its src[0]: " + std::string(node->src[0]->name));
             }
@@ -1215,8 +1265,15 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
                 }
             }
             break;
+        case GGML_OP_PAD:
+        case GGML_OP_CUMSUM:
+        case GGML_OP_TRI:
+        case GGML_OP_FILL:
+        case GGML_OP_DIAG:
+        case GGML_OP_SET:
         case GGML_OP_RMS_NORM:
         case GGML_OP_NORM:
+        case GGML_OP_L2_NORM:
         case GGML_OP_ADD:
         case GGML_OP_GLU:
         case GGML_OP_ROPE:
@@ -1224,19 +1281,90 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
         case GGML_OP_SOFT_MAX:
         case GGML_OP_ARGSORT:
         case GGML_OP_ADD_ID:
+        case GGML_OP_SUM_ROWS:
+        case GGML_OP_CLAMP:
+        case GGML_OP_DIV:
         case GGML_OP_UNARY:
             m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[0]];
             break;
         case GGML_OP_MUL_MAT_ID:
             m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[1]];
             break;
+        case GGML_OP_REPEAT:
+            m_node_dynamic_dims[node] = -1;
+            if (m_node_dynamic_dims[node->src[0]] != -1) {
+                m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[0]];
+            }
+            break;
         case GGML_OP_CPY:
         case GGML_OP_SET_ROWS:
             m_node_dynamic_dims[node] = -1;
             break;
+        case GGML_OP_SSM_CONV: {
+            // sx shape: [d_conv-1+n_t, d_inner, n_s, 1]
+            // c  shape: [d_conv, d_inner]  (static weight)
+            // out shape: [d_inner, n_t, n_s, 1]
+            // Dimension mapping from sx (src[0]) to output:
+            //   sx dim 0 (contains n_t) -> output dim 1 (n_t)
+            //   sx dim 1 (d_inner)      -> output dim 0 (d_inner)
+            //   sx dim 2 (n_s)          -> output dim 2 (n_s)
+            //   sx dim 3               -> output dim 3
+            constexpr int sx_to_out[GGML_MAX_DIMS] = { 1, 0, 2, 3 };
+            m_node_dynamic_dims[node] = -1;
+            if (m_node_dynamic_dims[node->src[0]] != -1) {
+                m_node_dynamic_dims[node] = sx_to_out[m_node_dynamic_dims[node->src[0]]];
+            }
+            break;
+        }
+        case GGML_OP_SSM_SCAN: {
+            // Output is a flat 1D tensor: [total, 1, 1, 1]
+            // where total = nelements(x) + d_state * head_dim * n_head * n_seqs
+            // x (src[1]) shape: [head_dim, n_head, n_seq_tokens, n_seqs]
+            // If x has a dynamic dim (n_seq_tokens), output dim 0 is dynamic.
+            m_node_dynamic_dims[node] = -1;
+            if (m_node_dynamic_dims[node->src[1]] != -1) {
+                m_node_dynamic_dims[node] = 0;
+            }
+            break;
+        }
         default:
             std::cout << "Doesn't handle node name: " << node->name << " op: " << ggml_op_name(node->op) << std::endl;
             break;
+        }
+        // print node name and shape with the dynamic dim for debugging
+        if (1) {
+            int dynamic_dim = m_node_dynamic_dims.count(node) ? m_node_dynamic_dims[node] : -1;
+            std::cout << "Visited node: " << node->name << " op: " << ggml_op_name(node->op) << " shape: [";
+            for (int i = 0; i < 4; i++) {
+                if (i == dynamic_dim) {
+                    std::cout << "*";
+                } else {
+                    std::cout << node->ne[i];
+                }
+                if (i < 3) {
+                    std::cout << ", ";
+                }
+            }
+            std::cout << "]" << std::endl;
+            for (int j = 0; j < GGML_MAX_SRC; j++) {
+                ggml_tensor * src = node->src[j];
+                if (src == nullptr) {
+                    continue;
+                }
+                int src_dynamic_dim = m_node_dynamic_dims.count(src) ? m_node_dynamic_dims[src] : -1;
+                std::cout << "    [" << j << "] src: " << src->name << " [";
+                for (int k = 0; k < 4; k++) {
+                    if (k == src_dynamic_dim) {
+                        std::cout << "*";
+                    } else {
+                        std::cout << src->ne[k];
+                    }
+                    if (k < 3) {
+                        std::cout << ", ";
+                    }
+                }
+                std::cout << "]" << std::endl;
+            }
         }
     };
 
@@ -1246,7 +1374,7 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
     }
 
     // print the nodes in m_cgraph name & shape with the dynamic dim (the dynamic dim is the dimension with -1 in m_node_dynamic_dims) for debugging
-    if (0) {
+    if (1) {
         for (int i = 0; i < m_cgraph->n_nodes; i++) {
             ggml_tensor * node = m_cgraph->nodes[i];
             int dynamic_dim = m_node_dynamic_dims[node];
