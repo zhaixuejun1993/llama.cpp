@@ -12,11 +12,12 @@
 #include <vector>
 
 struct graph_key {
+    uintptr_t cgraph_ptr;
     int n_nodes;
     std::string first_node_name;
     std::string last_node_name;
 
-    graph_key(const ggml_cgraph * cgraph) : n_nodes(cgraph->n_nodes) {
+    graph_key(const ggml_cgraph * cgraph) : cgraph_ptr(reinterpret_cast<uintptr_t>(cgraph)), n_nodes(cgraph->n_nodes) {
         if (n_nodes > 0) {
             first_node_name = cgraph->nodes[0]->name;
             last_node_name = cgraph->nodes[n_nodes - 1]->name;
@@ -24,14 +25,15 @@ struct graph_key {
     }
 
     bool operator==(const graph_key & other) const {
-        return n_nodes == other.n_nodes && first_node_name == other.first_node_name &&
-               last_node_name == other.last_node_name;
+        return cgraph_ptr == other.cgraph_ptr && n_nodes == other.n_nodes &&
+               first_node_name == other.first_node_name && last_node_name == other.last_node_name;
     }
 };
 
 struct graph_key_hash {
     size_t operator()(const graph_key & key) const {
-        size_t h = std::hash<int>{}(key.n_nodes);
+        size_t h = std::hash<uintptr_t>{}(key.cgraph_ptr);
+        h ^= std::hash<int>{}(key.n_nodes) + 0x9e3779b9 + (h << 6) + (h >> 2);
         if (key.n_nodes > 0) {
             h ^= std::hash<std::string>{}(key.first_node_name) + 0x9e3779b9 + (h << 6) + (h >> 2);
             h ^= std::hash<std::string>{}(key.last_node_name) + 0x9e3779b9 + (h << 6) + (h >> 2);
