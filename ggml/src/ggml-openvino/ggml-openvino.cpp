@@ -842,13 +842,13 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
         }
         break;
     }
-    case GGML_OP_CPY: {
-        if (op->src[1] != op) {
-            // GGML_LOG_WARN("OpenVINO backend only supports CPY that is a cast\n");
-            return true;
-        }
-        break;
-    }
+    // case GGML_OP_CPY: {
+    //     if (op->src[1] != op) {
+    //         // GGML_LOG_WARN("OpenVINO backend only supports CPY that is a cast\n");
+    //         return true;
+    //     }
+    //     break;
+    // }
     case GGML_OP_MUL_MAT: {
         if (op->src[0]->type == GGML_TYPE_F16 && op->src[1]->type == GGML_TYPE_F16) {
             // Has accuracy issue, try enabling this and see `test-backend-ops -o "MUL_MAT"`

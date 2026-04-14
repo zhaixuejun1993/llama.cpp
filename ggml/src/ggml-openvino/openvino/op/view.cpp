@@ -200,6 +200,45 @@ OutputVector translate_view(const NodeContext & context) {
             false);
         return rename_outputs_with_suffix({reshaped}, context.get_name());
     }
+    // op_case 5: slice a contiguous chunk from dim0 of src and reshape into multiple dims.
+    // Example: src [192, 128, 1, 1] -> dst [32, 2, 128, 1]
+    // OV dims (reversed): src [1, 1, 128, 192] -> slice last dim -> [1, 1, 128, 64] -> reshape [1, 128, 2, 32]
+    if (context.get_op_case() == 5) {
+        auto input = context.get_input(0);
+        auto src_shape = context.get_input_shape(0).to_shape();
+        auto dst_shape = context.get_output_shape().to_shape();
+        auto src_stride = context.get_input_stride(0);
+
+        size_t rank = dst_shape.size();
+        size_t last_dim = rank - 1;
+
+        // Element size in bytes (last OV stride = ggml nb[0])
+        size_t elem_size = src_stride[last_dim];
+
+        // Number of elements to take from src's last dim (ggml dim0)
+        size_t slice_len = dst_shape[last_dim] * dst_shape[last_dim - 1];
+
+        // Start index within src's last dim
+        size_t offset = context.get_output_op_offset();
+        size_t start_idx = offset / elem_size;
+
+        // Step 1: Slice src's last dim
+        auto sliced = std::make_shared<ov::op::v8::Slice>(
+            input,
+            ov::op::v0::Constant::create(ov::element::i64, {1}, {(int64_t)start_idx}),
+            ov::op::v0::Constant::create(ov::element::i64, {1}, {(int64_t)(start_idx + slice_len)}),
+            ov::op::v0::Constant::create(ov::element::i64, {1}, {1}),
+            ov::op::v0::Constant::create(ov::element::i64, {1}, {(int64_t)last_dim}));
+
+        // Step 2: Reshape to dst shape
+        std::vector<int64_t> dst_shape_i64(dst_shape.begin(), dst_shape.end());
+        auto reshaped = std::make_shared<ov::op::v1::Reshape>(
+            sliced,
+            ov::op::v0::Constant::create(ov::element::i64, {dst_shape_i64.size()}, dst_shape_i64),
+            false);
+
+        return rename_outputs_with_suffix({reshaped}, context.get_name());
+    }
     return {context.get_input(0)};
 }
 

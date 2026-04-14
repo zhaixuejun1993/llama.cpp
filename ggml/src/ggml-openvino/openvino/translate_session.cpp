@@ -85,7 +85,7 @@ void add_sliced_mask(TensorMap & tensor_map, GgmlDecoder & ggml_model_decoder) {
             (tensor_map.find("token_len_per_seq") != tensor_map.end())) {
             auto token_len_per_seq = tensor_map.at("token_len_per_seq").get_node_shared_ptr();
             auto mask = tensor_map.at(mask_name).get_node_shared_ptr();
-            std::shared_ptr<ov::Node> mask_sliced;
+            std::shared_ptr<ov::Node> mask_sliced = mask;
             if (is_static) {
                 mask_sliced = mask;
             } else if (ggml_model_decoder.is_stateful()) {
@@ -105,13 +105,6 @@ void add_sliced_mask(TensorMap & tensor_map, GgmlDecoder & ggml_model_decoder) {
                 auto last_inp_pos_inc = std::make_shared<ov::op::v1::Add>(last_inp_pos_cvt, one);
 
                 mask_sliced = std::make_shared<ov::op::v8::Slice>(mask, zero, last_inp_pos_inc, step, axes);
-                mask_sliced = std::make_shared<ov::op::v0::Convert>(mask_sliced, ov::element::f16);
-                mask_sliced->set_friendly_name(sliced_name);
-            } else {
-                auto zero = ov::op::v0::Constant::create(ov::element::i64, {1}, {0});
-                auto one = ov::op::v0::Constant::create(ov::element::i64, {1}, {1});
-                auto two = ov::op::v0::Constant::create(ov::element::i64, {1}, {2});
-                mask_sliced = std::make_shared<ov::op::v8::Slice>(mask, zero, token_len_per_seq, one, two);
                 mask_sliced = std::make_shared<ov::op::v0::Convert>(mask_sliced, ov::element::f16);
                 mask_sliced->set_friendly_name(sliced_name);
             }
@@ -146,7 +139,9 @@ void add_rope_sin_cos(TensorMap & tensor_map, GgmlDecoder & ggml_model_decoder) 
 
 // Create common patterns
 void preprocess(TensorMap & tensor_map, GgmlDecoder & ggml_model_decoder) {
-    add_sliced_mask(tensor_map, ggml_model_decoder);
+    if (ggml_model_decoder.is_stateful()) {
+        add_sliced_mask(tensor_map, ggml_model_decoder);
+    }
     add_rope_sin_cos(tensor_map, ggml_model_decoder);
 }
 

@@ -25,7 +25,7 @@ OutputVector translate_reshape(const NodeContext & context) {
 
     int op_case = context.get_op_case();
     FRONT_END_CHECK_IMPLEMENTED(
-        op_case == 1 || op_case == 2 || op_case == 3 || op_case == 4 || op_case == 5 || op_case == 6,
+        op_case == 1 || op_case == 2 || op_case == 3 || op_case == 4 || op_case == 5 || op_case == 6 || op_case == 7,
         "Unsupported RESHAPE case");
 
     auto output_shape = context.get_output_shape().to_shape();
@@ -77,6 +77,9 @@ OutputVector translate_reshape(const NodeContext & context) {
         // new_shape_node = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{one, one, token_len, emb_size}, 0);
 
     } else if (op_case == 6) {
+        new_shape_node = ov::op::v0::Constant::create(ov::element::i64, {4}, context.get_output_shape().to_shape());
+    } else if (op_case == 7) {
+        // Unflatten: src dim0 splits into dst dim0 * dim1 * dim2 (e.g. [2048,1,1,1] -> [32,32,2,1])
         new_shape_node = ov::op::v0::Constant::create(ov::element::i64, {4}, context.get_output_shape().to_shape());
     }
     auto res = std::make_shared<ov::op::v1::Reshape>(context.get_input(0), new_shape_node, false);

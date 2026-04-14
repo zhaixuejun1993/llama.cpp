@@ -113,7 +113,8 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
 
         auto it = r_ctx->decoder_cache.find(key);
 
-        cache_hit = it != r_ctx->decoder_cache.end();
+        // cache_hit = it != r_ctx->decoder_cache.end();
+        cache_hit = false;
         ModelParams old_m_params;
         if (cache_hit) {
             mutex = it->second->mutex;
