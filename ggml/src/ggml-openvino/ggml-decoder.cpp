@@ -255,7 +255,7 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
                 if (node->nb[0] == src->nb[0] &&
                     node->ne[0] * node->ne[1] <= src->ne[0] &&
                     node->nb[2] == src->nb[1] &&
-                    (node->ne[0] != src->ne[0] || node->ne[1] != src->ne[1]) && ((src->ne[0] == 192 || src->ne[0] == 512) && src->ne[1] == 128)) {
+                    (node->ne[0] != src->ne[0] || node->ne[1] != src->ne[1]) && ((src->ne[0] == 192 || src->ne[0] == 512 || src->ne[0] == 768) && src->ne[1] == 128)) {
                     op_case = 5;
                     break;
                 }
@@ -1410,7 +1410,7 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
         visit_node(visit_node, node);
     }
 
-    if (0) {
+    if (1) {
         for (int i = 0; i < m_cgraph->n_nodes; i++) {
             ggml_tensor * node = m_cgraph->nodes[i];
             int dynamic_dim = m_node_dynamic_dims.count(node) ? m_node_dynamic_dims[node] : -1;
