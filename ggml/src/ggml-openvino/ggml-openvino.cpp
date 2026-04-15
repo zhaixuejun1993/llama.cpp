@@ -876,6 +876,12 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
             // GGML_LOG_WARN("OpenVINO backend does not support ROPE with mode %d\n", mode);
             return true;
         }
+        // Todo: this is a workarround for llama arch test with model qwen3vl
+        if (mode == GGML_ROPE_TYPE_IMROPE && op->src[0]->ne[2] != op->src[1]->ne[0]) {
+            // GGML_LOG_WARN("OpenVINO backend does not support IMROPE with src[0]->ne[2] %ld != src[1]->ne[0] %ld\n",
+            //               op->src[0]->ne[2], op->src[1]->ne[0]);
+            return true;
+        }
         if (n_dims != 0.0f && n_dims != op->src[0]->ne[0]) {
             // GGML_LOG_WARN("OpenVINO backend does not support ROPE with n_dims %d != src[0]->ne[0] %ld\n", n_dims,
             //               op->src[0]->ne[0]);
