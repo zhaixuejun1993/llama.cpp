@@ -249,14 +249,13 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
 
                 // Case 5: slice a contiguous chunk from dim0 and reshape into multiple dims.
                 // Pattern: src [A, B, ...] -> dst [C, D, B, ...] where C*D <= A
-                // Strides: nb[0]=type_size, nb[1]=C*type_size (contiguous), nb[2]=src->nb[1]
+                // Strides: nb[0]=type_size, nb[2]=src->nb[1]
                 // Guard: at least dim0 or dim1 must differ, otherwise it's a higher-dim slice (case 3).
-                // workarround for qwen3next (this will no need after view all be handle in the following op)
+                // workarround for qwen3next & qwen35 (this will no need after view all be handle in the following op)
                 if (node->nb[0] == src->nb[0] &&
                     node->ne[0] * node->ne[1] <= src->ne[0] &&
-                    node->nb[1] == (size_t)(node->ne[0]) * node->nb[0] &&
                     node->nb[2] == src->nb[1] &&
-                    (node->ne[0] != src->ne[0] || node->ne[1] != src->ne[1]) && (src->ne[0] == 192 && src->ne[1] == 128)) {
+                    (node->ne[0] != src->ne[0] || node->ne[1] != src->ne[1]) && ((src->ne[0] == 192 || src->ne[0] == 512) && src->ne[1] == 128)) {
                     op_case = 5;
                     break;
                 }
