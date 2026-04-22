@@ -855,40 +855,42 @@ static char * fmt_size(size_t size) {
 
 static void ggml_backend_sched_print_assignments(ggml_backend_sched_t sched, struct ggml_cgraph * graph) {
     int cur_split = 0;
-    for (int i = 0; i < graph->n_nodes; i++) {
+    for (int i = 0; i < 200; i++) {
         if (cur_split < sched->n_splits && i == sched->splits[cur_split].i_start) {
             ggml_backend_t split_backend = sched->backends[sched->splits[cur_split].backend_id];
-            GGML_LOG_DEBUG("\n## SPLIT #%d: %s # %d inputs", cur_split, ggml_backend_name(split_backend),
+            printf("\n## SPLIT #%d: %s # %d inputs", cur_split, ggml_backend_name(split_backend),
                 sched->splits[cur_split].n_inputs);
             for (int j = 0; j < sched->splits[cur_split].n_inputs; j++) {
                 if (j == 0) {
-                    GGML_LOG_DEBUG(": ");
+                    printf(": ");
                 }
-                GGML_LOG_DEBUG("[%s (%5.5s)] ", sched->splits[cur_split].inputs[j]->name,
-                    fmt_size(ggml_nbytes(sched->splits[cur_split].inputs[j])));
+                printf("[%s] ", sched->splits[cur_split].inputs[j]->name);
+
             }
-            GGML_LOG_DEBUG("\n");
+            printf("\n");
             cur_split++;
         }
         struct ggml_tensor * node = graph->nodes[i];
-        if (ggml_is_view_op(node->op)) {
-            continue;
-        }
-        if (sched->debug > 1) {
+        if (2 > 1) {
             ggml_backend_t tensor_backend = ggml_backend_sched_get_tensor_backend(sched, node);
-            GGML_LOG_DEBUG("node #%3d (%10.10s): %20.20s (%5.5s) [%5.5s %8.8s] use=%d,c=%d:", i, ggml_op_name(node->op), node->name,
-                fmt_size(ggml_nbytes(node)), tensor_backend ? ggml_backend_name(tensor_backend) : "NULL", GET_CAUSE(node),
-                graph->use_counts[ggml_hash_find(&graph->visited_hash_set, node)], node->flags & GGML_TENSOR_FLAG_COMPUTE ? 1 : 0);
+            printf("node #%3d (%10.10s): %20.20s [%5.5s] shape=[%lld,%lld,%lld,%lld] stride=[%zu,%zu,%zu,%zu] offset=%zu:", i, ggml_op_name(node->op), node->name,
+                tensor_backend ? ggml_backend_name(tensor_backend) : "NULL",
+                (long long) node->ne[0], (long long) node->ne[1], (long long) node->ne[2], (long long) node->ne[3],
+                node->nb[0], node->nb[1], node->nb[2], node->nb[3],
+                node->view_offs);
             for (int j = 0; j < GGML_MAX_SRC; j++) {
                 struct ggml_tensor * src = node->src[j];
                 if (src == NULL) {
                     continue;
                 }
                 ggml_backend_t src_backend = ggml_backend_sched_get_tensor_backend(sched, src);
-                GGML_LOG_DEBUG(" %20.20s (%5.5s) [%5.5s %8.8s]", src->name,
-                    fmt_size(ggml_nbytes(src)), src_backend ? ggml_backend_name(src_backend) : "NULL", GET_CAUSE(src));
+                printf(" %20.20s [%5.5s] shape=[%lld,%lld,%lld,%lld] stride=[%zu,%zu,%zu,%zu] offset=%zu", src->name,
+                    src_backend ? ggml_backend_name(src_backend) : "NULL",
+                    (long long) src->ne[0], (long long) src->ne[1], (long long) src->ne[2], (long long) src->ne[3],
+                    src->nb[0], src->nb[1], src->nb[2], src->nb[3],
+                    src->view_offs);
             }
-            GGML_LOG_DEBUG("\n");
+            printf("\n");
         }
     }
 }
@@ -1151,6 +1153,14 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
         GGML_ASSERT(*cur_backend_id != -1);
     }
 
+     // add the node id to the name for easier debugging
+    for (int i = 0; i < graph->n_nodes; i++) {
+        struct ggml_tensor * node = graph->nodes[i];
+        char                 new_name[128];
+        snprintf(new_name, sizeof(new_name), "%s#%d", node->name, i);
+        ggml_format_name(node, "%s", new_name);
+    }
+
     // pass 5: split graph, find tensors that need to be copied
     {
         int i_split = 0;
@@ -1284,6 +1294,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
         sched->n_splits = i_split + 1;
     }
 
+    ggml_backend_sched_print_assignments(sched, graph);
     if (sched->debug) {
         ggml_backend_sched_print_assignments(sched, graph);
     }
@@ -2084,6 +2095,47 @@ bool ggml_backend_compare_graph_backend(ggml_backend_t backend1, ggml_backend_t 
         }
         GGML_ASSERT(verified);
     } else {
+        {
+            // print the g1 graph for debugging
+            for (int i = 0; i < g1->n_nodes; i++) {
+                struct ggml_tensor * node = g1->nodes[i];
+                printf("node #%3d (%10s): %20s shape=[", i, ggml_op_name(node->op), node->name);
+                for (int j = 0; j < 4; j++) {
+                    printf("%zu", node->ne[j]);
+                    if (j < 3) printf(",");
+                }
+                printf("] stride=[");
+                for (int j = 0; j < 4; j++) {
+                    printf("%zu", node->nb[j]);
+                    if (j < 3) printf(",");
+                }
+                printf("]");
+                if (node->op == GGML_OP_VIEW) {
+                    printf(" offset=%zu", node->view_offs);
+                }
+
+                // Print all src info
+                for (int k = 0; k < GGML_MAX_SRC; k++) {
+                    if (node->src[k]) {
+                        printf("%s%20s shape=[", k == 0 ? ": " : " ", node->src[k]->name);
+                        for (int j = 0; j < 4; j++) {
+                            printf("%zu", node->src[k]->ne[j]);
+                            if (j < 3) printf(",");
+                        }
+                        printf("] stride=[");
+                        for (int j = 0; j < 4; j++) {
+                            printf("%zu", node->src[k]->nb[j]);
+                            if (j < 3) printf(",");
+                        }
+                        printf("]");
+                        if (node->src[k]->op == GGML_OP_VIEW) {
+                            printf(" offset=%zu", node->src[k]->view_offs);
+                        }
+                    }
+                }
+                printf("\n");
+            }
+        }
         for (int i = 0; i < g1->n_nodes; i++) {
             struct ggml_tensor * t1 = g1->nodes[i];
             struct ggml_tensor * t2 = g2->nodes[i];

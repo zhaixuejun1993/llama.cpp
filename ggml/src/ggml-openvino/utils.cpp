@@ -564,7 +564,7 @@ enum ggml_status naive_compute(ggml_cgraph * cgraph,
                                ov::Core & core,
                                const std::string & device,
                                const ov::AnyMap & config) {
-    if (cgraph->n_nodes == 1 && (cgraph->nodes[0]->op == GGML_OP_NONE)) {
+    if (cgraph->n_nodes == 1 && (cgraph->nodes[0]->op == GGML_OP_NONE || cgraph->nodes[0]->op == GGML_OP_VIEW)) {
         return GGML_STATUS_SUCCESS;
     }
 
@@ -618,7 +618,7 @@ namespace {
 ov::Tensor convert_ggml_input_to_ov(std::shared_ptr<GgmlOvDecoder> ggml_decoder, const std::string & name) {
     const auto * ggml_tensor = ggml_decoder->get_input_ggml_tensor(name);
 
-    if (ggml_tensor->extra != nullptr && !ggml_decoder->is_splited_model()) {
+    if (0) {
         // GGML_LOG_DEBUG("Using ggml_tensor->extra as ov::Tensor for input: %s\n", name.c_str());
         auto * extra_base = static_cast<ggml_openvino_extra_base *>(ggml_tensor->extra);
         if (extra_base->type != ggml_openvino_extra_base::Type::TENSOR) {
@@ -630,6 +630,42 @@ ov::Tensor convert_ggml_input_to_ov(std::shared_ptr<GgmlOvDecoder> ggml_decoder,
 
     // GGML_LOG_DEBUG("Converting ggml tensor to ov::Tensor for input: %s\n", name.c_str());
     auto * input_data = ggml_tensor->data;
+
+    if (0) {
+        auto node = ggml_tensor;
+        char txt_filename[256];
+        snprintf(txt_filename, sizeof(txt_filename), "node_%03d_%s_op_%s.txt", 1, node->name ? node->name : "unnamed",
+                 ggml_op_name(node->op));
+
+        FILE * txt_f = fopen(txt_filename, "w");
+
+        // 基本信息
+        fprintf(txt_f, "\nData:\n");
+
+        // 数据转换和写入
+        size_t n_elements = ggml_nelements(node);
+        if (node->type == GGML_TYPE_F32) {
+            float * data_f32 = (float *) node->data;
+            for (size_t k = 0; k < n_elements; k++) {
+                // fprintf(txt_f, "%.6f\n", roundf(data_f32[k] * 1000000) / 1000000);
+                fprintf(txt_f, "%f\n", data_f32[k]);
+            }
+        } else if (node->type == GGML_TYPE_F16) {
+            ggml_fp16_t * data_f16 = (ggml_fp16_t *) node->data;
+            for (size_t k = 0; k < n_elements; k++) {
+                float value = ggml_fp16_to_fp32(data_f16[k]);
+                // fprintf(txt_f, "%.6f\n", roundf(value * 1000000) / 1000000);
+                fprintf(txt_f, "%f\n", value);
+            }
+        } else {
+            fprintf(txt_f, "Unsupported type for text dump: %s\n", ggml_type_name(node->type));
+            fprintf(txt_f, "Use binary dump instead.\n");
+        }
+
+        fclose(txt_f);
+        printf("Saved: %s\n", txt_filename);
+    }
+
     ov::Shape input_shape;
     if (ggml_tensor->op == GGML_OP_VIEW && !ggml_decoder->is_splited_model()) {
         // This case is added to make test-backend-ops work
