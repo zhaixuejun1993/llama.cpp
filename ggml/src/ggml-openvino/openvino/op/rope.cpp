@@ -35,7 +35,8 @@ OutputVector translate_rope(const NodeContext & context) {
 
     ov::Output<Node> res;
 
-    auto data_node = context.get_input(0).get_node_shared_ptr();
+    // auto data_node = context.get_input(0).get_node_shared_ptr();
+    auto data_node = process_view_input_new(context, 0).get_node_shared_ptr();
     auto output_shape = context.get_output_shape().to_shape();
     int32_t * op_params = context.get_output_op_params();
     const int mode = op_params[2];

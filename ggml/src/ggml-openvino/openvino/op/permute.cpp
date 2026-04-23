@@ -30,7 +30,13 @@ OutputVector translate_permute(const NodeContext & context) {
     // op_case 5 6 is to permute V cache when `-fa off`, where v_trans=true
 
     ov::Output<Node> res;
-    auto src = context.get_input(0);
+    // auto src = context.get_input(0);
+    ov::Output<Node> src;
+    if (op_case == 2) {
+        src = process_view_input_new(context, 0);
+    } else {
+        src = context.get_input(0);
+    }
     std::vector<int64_t> perm_values{0, 2, 1, 3};
     const int32_t* op_params = context.get_output_op_params();
     if (op_params != nullptr) {
@@ -61,6 +67,8 @@ OutputVector translate_permute(const NodeContext & context) {
         auto reshaped = std::make_shared<ov::op::v1::Reshape>(src, new_shape, true);
         res = std::make_shared<ov::op::v1::Transpose>(reshaped, perm);
     } else {
+// node # 15 (      VIEW): cache_v_l0 (view)#15 [OPENV] shape=[128,2,256,1]  cache_v_l0 [OPENV] shape=[256,256,1,1] 
+// node # 16 (   PERMUTE): 3 cache_v_l0 (view) (p [OPENV] shape=[128,256,2,1] cache_v_l0 (view)#15 [OPENV] shape=[128,2,256,1]
         auto cache_shape = src.get_partial_shape();
         auto output_shape = context.get_output_shape().to_shape();
         int64_t head_size = output_shape[3];

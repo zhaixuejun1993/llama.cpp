@@ -253,20 +253,20 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
         for (size_t i = 0; i < ov_output_names.size(); i++) {
             auto * ggml_tensor = ggml_decoder->get_model_outputs().at(ov_output_names[i]);
             auto output_tensor = create_ov_output_tensor(ggml_decoder, infer_request, i, ggml_tensor);
-            // print output tensor shape and the i port shape from model, they should match
-            printf("Output tensor %s shape: ", ov_output_names[i].c_str());
-            for (size_t j = 0; j < output_tensor.get_shape().size(); j++) {
-                printf("%ld ", output_tensor.get_shape()[j]);
-            }
-            printf("\n");
-            // print model output port shape
-            auto model_output_port = infer_request->get_output_tensor(i);
-            auto model_output_shape = model_output_port.get_shape();
-            printf("Model output port %s shape: ", ov_output_names[i].c_str());
-            for (size_t j = 0; j < model_output_shape.size(); j++) {
-                printf("%ld ", model_output_shape[j]);
-            }
-            printf("\n");
+            // // print output tensor shape and the i port shape from model, they should match
+            // printf("Output tensor %s shape: ", ov_output_names[i].c_str());
+            // for (size_t j = 0; j < output_tensor.get_shape().size(); j++) {
+            //     printf("%ld ", output_tensor.get_shape()[j]);
+            // }
+            // printf("\n");
+            // // print model output port shape
+            // auto model_output_port = infer_request->get_output_tensor(i);
+            // auto model_output_shape = model_output_port.get_shape();
+            // printf("Model output port %s shape: ", ov_output_names[i].c_str());
+            // for (size_t j = 0; j < model_output_shape.size(); j++) {
+            //     printf("%ld ", model_output_shape[j]);
+            // }
+            // printf("\n");
             infer_request->set_output_tensor(i, output_tensor);
         }
 
