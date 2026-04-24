@@ -13,7 +13,8 @@ namespace ggml {
 namespace op {
 
 OutputVector translate_cpy(const NodeContext & context) {
-    auto input = context.get_input(0);
+    // auto input = context.get_input(0);
+    auto input = process_view_input_new(context, 0);
     auto input_shape = context.get_input_shape(0);
     auto output_shape = context.get_output_shape();
 

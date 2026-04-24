@@ -78,10 +78,10 @@ namespace op {
 template <typename T>
 OutputVector translate_1to1_match_2_inputs(const NodeContext& context) {
     num_inputs_check(context, 2, 2);
-    auto res = std::make_shared<T>(context.get_input(0), context.get_input(1));
-    // auto input_0 = process_view_input_new(context, 0);
-    // auto input_1 = process_view_input_new(context, 1);
-    // auto res = std::make_shared<T>(input_0, input_1);
+    // auto res = std::make_shared<T>(context.get_input(0), context.get_input(1));
+    auto input_0 = process_view_input_new(context, 0);
+    auto input_1 = process_view_input_new(context, 1);
+    auto res = std::make_shared<T>(input_0, input_1);
     return rename_outputs_with_suffix({res}, context.get_name());
 }
 }  // namespace op

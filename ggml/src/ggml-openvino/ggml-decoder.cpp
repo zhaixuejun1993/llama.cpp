@@ -296,7 +296,7 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
                     }
                 }
                 if (diff_count >= 1) {
-                    op_case = 3;
+                    op_case = 0;
                 }
             }
         }
@@ -588,12 +588,12 @@ void GgmlOvDecoder::compute_model_inputs() {
                     m_model_params.kv_names.push_back(src_name);
                 }
             }
-            // if the src is a view, using the view_src replace src
-            if (src->op == GGML_OP_VIEW) {
-                src = src->view_src;
+            // Resolve nested VIEW nodes by following src[0] until the first non-VIEW tensor.
+            while (src->op == GGML_OP_VIEW && src->src[0] != nullptr) {
+                src = src->src[0];
                 src_name = std::string(src->name);
-                m_inputs[src_name] = src;
             }
+            m_inputs[src_name] = src;
             ov::PartialShape param_shape = get_graph_input_shape(node, src, m_node_dynamic_dims[src]);
             auto param_node = std::make_shared<ov::op::v0::Parameter>(get_ov_type(src), param_shape);
             param_node->set_friendly_name(src_name);
@@ -609,7 +609,7 @@ void GgmlOvDecoder::compute_model_outputs() {
     for (int node_n = 0; node_n < m_cgraph->n_nodes; node_n++) {
         auto * cur_node = m_cgraph->nodes[node_n];
         // if the node op is NONE means this node is not used at all, we can skip it directly without adding to model outputs.
-        if (cur_node->op == GGML_OP_NONE) {
+        if (cur_node->op == GGML_OP_NONE || cur_node->op == GGML_OP_VIEW) {
             continue;
         }
         auto cur_node_use_count = m_cgraph->use_counts[ggml_hash_find(&m_cgraph->visited_hash_set, cur_node)];
