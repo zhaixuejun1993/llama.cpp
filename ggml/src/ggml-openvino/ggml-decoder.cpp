@@ -175,6 +175,10 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
             op_case = 2;
             if (src->ne[2] * src->ne[3] == node->ne[1]) {
                 op_case = 5;
+                // if the src is in model weight, op case will be set with 7
+                // if (m_model_weights.find(std::string(src->name)) != m_model_weights.end()) {
+                //     op_case = 7;
+                // }
             }
         } else if (src->ne[0] * src->ne[1] * src->ne[2] == node->ne[1]) {
             op_case = 3;
@@ -246,9 +250,9 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
     case GGML_OP_VIEW: {
         if (node->src[0]->op == GGML_OP_VIEW) {
             auto * src = node->src[0];
-            if (ggml_nelements(node) != ggml_nelements(src)) {
-                throw std::runtime_error("Unsupported VIEW case");
-            }
+            // if (ggml_nelements(node) != ggml_nelements(src)) {
+            //     throw std::runtime_error("Unsupported VIEW case");
+            // }
             op_case = 0; // falcon
             if (m_model_is_splitted && m_model_inputs.find(std::string(src->name)) != m_model_inputs.end()) {
                 op_case = 0;
@@ -609,7 +613,7 @@ void GgmlOvDecoder::compute_model_outputs() {
     for (int node_n = 0; node_n < m_cgraph->n_nodes; node_n++) {
         auto * cur_node = m_cgraph->nodes[node_n];
         // if the node op is NONE means this node is not used at all, we can skip it directly without adding to model outputs.
-        if (cur_node->op == GGML_OP_NONE || cur_node->op == GGML_OP_VIEW) {
+        if (cur_node->op == GGML_OP_NONE || cur_node->op == GGML_OP_VIEW || cur_node->op == GGML_OP_RESHAPE) {
             continue;
         }
         auto cur_node_use_count = m_cgraph->use_counts[ggml_hash_find(&m_cgraph->visited_hash_set, cur_node)];
@@ -1340,12 +1344,16 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
             if (m_node_dynamic_dims[node->src[0]] != -1) {
                 auto dynamic_dim_idx = m_node_dynamic_dims[node->src[0]];
                 auto dynamic_dim_value = node->src[0]->ne[dynamic_dim_idx];
-                for (int i = 0; i < GGML_MAX_DIMS; i++) {
-                    if (node->op_params[i] == dynamic_dim_idx) {
-                        m_node_dynamic_dims[node] = i;
-                        break;
-                    }
-                }
+                // for (int i = 0; i < GGML_MAX_DIMS; i++) {
+                //     if (node->op_params[i] == dynamic_dim_idx) {
+                //         m_node_dynamic_dims[node] = i;
+                //         break;
+                //     }
+                // }
+                m_node_dynamic_dims[node] = node->op_params[dynamic_dim_idx];
+                // OPENVINO_ASSERT(m_node_dynamic_dims[node] != -1,
+                //                 "Failed to map dynamic dim through PERMUTE op_params for node: " +
+                                    // std::string(node->name) + " and its src[0]: " + std::string(node->src[0]->name));
                 OPENVINO_ASSERT(dynamic_dim_value == node->ne[m_node_dynamic_dims[node]],
                                 "Dynamic dim value mismatch for node: " + std::string(node->name) +
                                     " and its src[0]: " + std::string(node->src[0]->name));

@@ -624,10 +624,10 @@ ov::Output<ov::Node> process_view_input_new(const NodeContext & context, int inp
         auto view_name = context.get_view_input_name(input_index, view_idx);
 
         // print view info
-        std::cout << "View " << view_idx << ": name = " << view_name << ", offset = " << view_offset << ", stride = ["
-              << view_stride[0] << "," << view_stride[1] << "," << view_stride[2] << "," << view_stride[3]
-              << "], ggml shape = [" << view_ggml_shape[0] << "," << view_ggml_shape[1] << ","
-              << view_ggml_shape[2] << "," << view_ggml_shape[3] << "], ov shape = " << view_ov_shape << std::endl;
+        // std::cout << "View " << view_idx << ": name = " << view_name << ", offset = " << view_offset << ", stride = ["
+        //       << view_stride[0] << "," << view_stride[1] << "," << view_stride[2] << "," << view_stride[3]
+        //       << "], ggml shape = [" << view_ggml_shape[0] << "," << view_ggml_shape[1] << ","
+        //       << view_ggml_shape[2] << "," << view_ggml_shape[3] << "], ov shape = " << view_ov_shape << std::endl;
 
         auto view_src_offset = context.get_view_input_src_offset(input_index, view_idx);
         auto view_src_stride = context.get_view_input_src_stride(input_index, view_idx);
@@ -635,12 +635,12 @@ ov::Output<ov::Node> process_view_input_new(const NodeContext & context, int inp
         auto view_src_ov_shape = context.get_view_input_src_ov_shape(input_index, view_idx);
         auto view_src_name = context.get_view_input_src_name(input_index, view_idx);
         // print source view info
-        std::cout << "View " << view_idx << ": source name = " << view_src_name
-                  << ", source offset = " << view_src_offset << ", source stride = [" << view_src_stride[0] << ","
-                  << view_src_stride[1] << "," << view_src_stride[2] << "," << view_src_stride[3]
-                  << "], source ggml shape = [" << view_src_ggml_shape[0] << "," << view_src_ggml_shape[1] << ","
-                  << view_src_ggml_shape[2] << "," << view_src_ggml_shape[3]
-                  << "], source ov shape = " << view_src_ov_shape << std::endl;
+        // std::cout << "View " << view_idx << ": source name = " << view_src_name
+        //           << ", source offset = " << view_src_offset << ", source stride = [" << view_src_stride[0] << ","
+        //           << view_src_stride[1] << "," << view_src_stride[2] << "," << view_src_stride[3]
+        //           << "], source ggml shape = [" << view_src_ggml_shape[0] << "," << view_src_ggml_shape[1] << ","
+        //           << view_src_ggml_shape[2] << "," << view_src_ggml_shape[3]
+        //           << "], source ov shape = " << view_src_ov_shape << std::endl;
 
         current = process_single_view(current,
                                       view_offset,
