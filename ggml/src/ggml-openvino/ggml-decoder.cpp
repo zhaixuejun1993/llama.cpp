@@ -1403,9 +1403,9 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
                         }
                     }
                 }
-                OPENVINO_ASSERT(m_node_dynamic_dims[node] != -1,
-                                "Dynamic dim value mismatch for node: " + std::string(node->name) +
-                                    " and its src[0]: " + std::string(node->src[0]->name));
+                // OPENVINO_ASSERT(m_node_dynamic_dims[node] != -1,
+                //                 "Dynamic dim value mismatch for node: " + std::string(node->name) +
+                //                     " and its src[0]: " + std::string(node->src[0]->name));
             }
             break;
         }

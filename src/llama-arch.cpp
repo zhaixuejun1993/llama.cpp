@@ -8,8 +8,8 @@
 
 static const std::map<llm_arch, const char *> LLM_ARCH_NAMES = {
     // { LLM_ARCH_CLIP,             "clip"             }, // dummy, only used by llama-quantize
-    // { LLM_ARCH_LLAMA,            "llama"            },
-    // { LLM_ARCH_LLAMA4,           "llama4"           },
+    { LLM_ARCH_LLAMA,            "llama"            },
+    { LLM_ARCH_LLAMA4,           "llama4"           },
     // { LLM_ARCH_DECI,             "deci"             },
     // { LLM_ARCH_FALCON,           "falcon"           },
     // { LLM_ARCH_GROK,             "grok"             },
@@ -45,7 +45,7 @@ static const std::map<llm_arch, const char *> LLM_ARCH_NAMES = {
     // { LLM_ARCH_PHI3,             "phi3"             },
     // { LLM_ARCH_PHIMOE,           "phimoe"           },
     // { LLM_ARCH_PLAMO,            "plamo"            },
-    { LLM_ARCH_PLAMO2,           "plamo2"           },
+    // { LLM_ARCH_PLAMO2,           "plamo2"           },
     // { LLM_ARCH_PLAMO3,           "plamo3"           },
     // { LLM_ARCH_CODESHELL,        "codeshell"        },
     // { LLM_ARCH_ORION,            "orion"            },
@@ -80,7 +80,7 @@ static const std::map<llm_arch, const char *> LLM_ARCH_NAMES = {
     // { LLM_ARCH_GLM4_MOE,         "glm4moe"          },
     // { LLM_ARCH_GLM_DSA,          "glm-dsa"          },
     // { LLM_ARCH_BITNET,           "bitnet"           },
-    // { LLM_ARCH_T5,               "t5"               },
+    { LLM_ARCH_T5,               "t5"               }, // compute_llm_params error
     // { LLM_ARCH_T5ENCODER,        "t5encoder"        },
     // { LLM_ARCH_JAIS,             "jais"             },
     // { LLM_ARCH_JAIS2,            "jais2"            },
@@ -113,16 +113,16 @@ static const std::map<llm_arch, const char *> LLM_ARCH_NAMES = {
     // { LLM_ARCH_OPENAI_MOE,       "gpt-oss"          },
     // { LLM_ARCH_LFM2,             "lfm2"             },
     // { LLM_ARCH_LFM2MOE,          "lfm2moe"          },
-    // { LLM_ARCH_DREAM,            "dream"            },
+    // // { LLM_ARCH_DREAM,            "dream"            }, // compute_llm_params error
     // { LLM_ARCH_SMALLTHINKER,     "smallthinker"     },
-    // { LLM_ARCH_LLADA,            "llada"            },
-    // { LLM_ARCH_LLADA_MOE,        "llada-moe"        },
+    // // { LLM_ARCH_LLADA,            "llada"            }, // compute_llm_params error
+    // // { LLM_ARCH_LLADA_MOE,        "llada-moe"        }, // compute_llm_params error
     // { LLM_ARCH_SEED_OSS,         "seed_oss"         },
     // { LLM_ARCH_GROVEMOE,         "grovemoe"         },
     // { LLM_ARCH_APERTUS,          "apertus"          },
     // { LLM_ARCH_MINIMAX_M2,       "minimax-m2"       },
     // { LLM_ARCH_COGVLM,           "cogvlm"           },
-    // { LLM_ARCH_RND1,             "rnd1"             },
+    // { LLM_ARCH_RND1,             "rnd1"             }, // compute_llm_params error
     // { LLM_ARCH_PANGU_EMBED,      "pangu-embedded"   },
     // { LLM_ARCH_MISTRAL3,         "mistral3"         },
     // { LLM_ARCH_MISTRAL4,         "mistral4"         },

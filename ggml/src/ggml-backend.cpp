@@ -855,6 +855,7 @@ static void ggml_backend_sched_print_assignments(ggml_backend_sched_t sched, str
                     printf(": ");
                 }
                 printf("[%s] ", sched->splits[cur_split].inputs[j]->name);
+
             }
             printf("\n");
             cur_split++;
@@ -862,18 +863,22 @@ static void ggml_backend_sched_print_assignments(ggml_backend_sched_t sched, str
         struct ggml_tensor * node = graph->nodes[i];
         if (2 > 1) {
             ggml_backend_t tensor_backend = ggml_backend_sched_get_tensor_backend(sched, node);
-            printf("node #%3d (%10.10s): %20.20s [%5.5s] shape=[%lld,%lld,%lld,%lld]:", i, ggml_op_name(node->op), node->name,
+            printf("node #%3d (%10.10s): %20.20s [%5.5s] shape=[%lld,%lld,%lld,%lld] stride=[%zu,%zu,%zu,%zu] offset=%zu:", i, ggml_op_name(node->op), node->name,
                 tensor_backend ? ggml_backend_name(tensor_backend) : "NULL",
-                (long long) node->ne[0], (long long) node->ne[1], (long long) node->ne[2], (long long) node->ne[3]);
+                (long long) node->ne[0], (long long) node->ne[1], (long long) node->ne[2], (long long) node->ne[3],
+                node->nb[0], node->nb[1], node->nb[2], node->nb[3],
+                node->view_offs);
             for (int j = 0; j < GGML_MAX_SRC; j++) {
                 struct ggml_tensor * src = node->src[j];
                 if (src == NULL) {
                     continue;
                 }
                 ggml_backend_t src_backend = ggml_backend_sched_get_tensor_backend(sched, src);
-                printf(" %20.20s [%5.5s] shape=[%lld,%lld,%lld,%lld]", src->name,
+                printf(" %20.20s [%5.5s] shape=[%lld,%lld,%lld,%lld] stride=[%zu,%zu,%zu,%zu] offset=%zu", src->name,
                     src_backend ? ggml_backend_name(src_backend) : "NULL",
-                    (long long) src->ne[0], (long long) src->ne[1], (long long) src->ne[2], (long long) src->ne[3]);
+                    (long long) src->ne[0], (long long) src->ne[1], (long long) src->ne[2], (long long) src->ne[3],
+                    src->nb[0], src->nb[1], src->nb[2], src->nb[3],
+                    src->view_offs);
             }
             printf("\n");
         }
