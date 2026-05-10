@@ -1,0 +1,270 @@
+digraph cldnn_program {
+    node_93825061424448[label="parameter:Parameter_15605:\ntype: input_layout\nprocessing number: 1\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825061424448 -> node_93825064554816 [label="0 -> 0"];
+    node_93825061424448 -> node_93825066156928 [label="0 -> 1"];
+    node_93825061424448 -> node_93825066157568 [label="0 -> 1"];
+    node_93825061424448 -> node_93825066315808 [label="0 -> 1"];
+    node_93825061424448 -> node_93825066074400 [label="0 -> 1"];
+    node_93825061424448 -> node_93825066075504 [label="0 -> 1"];
+    node_93825061423312[label="parameter:Parameter_15604:\ntype: input_layout\nprocessing number: 2\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825061423312 -> node_93825066075504 [label="0 -> 0"];
+    node_93825066075504[label="gather:Gather_15611:\ntype: gather\nprocessing number: 3\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825066075504 -> node_93825051344848 [label="0 -> 0"];
+    node_93825051344848[label="reshape:Squeeze_15616:\ntype: reshape\nprocessing number: 4\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825051344848 -> node_93825066060768 [label="0 -> 1"];
+    node_93825061422176[label="parameter:Parameter_15603:\ntype: input_layout\nprocessing number: 5\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825061422176 -> node_93825066074400 [label="0 -> 0"];
+    node_93825066074400[label="gather:Gather_15610:\ntype: gather\nprocessing number: 6\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825066074400 -> node_93825061922992 [label="0 -> 0"];
+    node_93825061922992[label="exp:Exp_20874:\ntype: activation\nprocessing number: 7\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825061922992 -> node_93825051343744 [label="0 -> 0"];
+    node_93825051343744[label="reshape:Squeeze_15615:\ntype: reshape\nprocessing number: 8\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825051343744 -> node_93825051585136 [label="0 -> 0"];
+    node_93825051585136[label="reshape:Unsqueeze_15618:\ntype: reshape\nprocessing number: 9\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825051585136 -> node_93825066059664 [label="0 -> 1"];
+    node_93825061421040[label="parameter:Parameter_15602:\ntype: input_layout\nprocessing number: 10\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825061421040 -> node_93825066315808 [label="0 -> 0"];
+    node_93825066315808[label="gather:Gather_15609:\ntype: gather\nprocessing number: 11\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825066315808 -> node_93825051342608 [label="0 -> 0"];
+    node_93825051342608[label="reshape:Squeeze_15614:\ntype: reshape\nprocessing number: 12\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825051342608 -> node_93825066175424 [label="0 -> 0"];
+    node_93825055772112[label="parameter:Parameter_15601:\ntype: input_layout\nprocessing number: 13\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825055772112 -> node_93825066157568 [label="0 -> 0"];
+    node_93825066157568[label="gather:Gather_15608:\ntype: gather\nprocessing number: 14\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825066157568 -> node_93825065852976 [label="0 -> 1"];
+    node_93825066157568 -> node_93825051586240 [label="0 -> 0"];
+    node_93825051586240[label="reshape:Unsqueeze_15620:\ntype: reshape\nprocessing number: 15\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825051586240 -> node_93825065851872 [label="0 -> 1"];
+    node_93825055770976[label="parameter:Parameter_15600:\ntype: input_layout\nprocessing number: 16\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825055770976 -> node_93825066156928 [label="0 -> 0"];
+    node_93825066156928[label="gather:Gather_15607:\ntype: gather\nprocessing number: 17\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825066156928 -> node_93825061003280 [label="0 -> 0"];
+    node_93825061003280[label="reshape:Unsqueeze_15629:\ntype: reshape\nprocessing number: 18\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825061003280 -> node_93825065854080 [label="0 -> 1"];
+    node_93825055769872[label="parameter:Parameter_15599:\ntype: input_layout\nprocessing number: 19\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825055769872 -> node_93825066059664 [label="0 -> 0"];
+    node_93825066059664[label="multiply:Multiply_15619:\ntype: eltwise\nprocessing number: 20\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825066059664 -> node_93825064615488 [label="0 -> 0"];
+    node_93825066059664 -> node_93825065851872 [label="0 -> 0"];
+    node_93825065851872[label="matmul:MatMul_15621:\ntype: gemm\nprocessing number: 21\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825065851872 -> node_93825066061872 [label="0 -> 0"];
+    node_93825066068336[label="constant:Parameter_15605_inc:\ntype: data\nprocessing number: 22\n color:none
+layout_info: 
+0: i32:bfyx:1:nopad
+
+", shape=box];
+    node_93825066068336 -> node_93825064554816 [label="0 -> 1"];
+    node_93825064554816[label="add:Parameter_15605_update:\ntype: eltwise\nprocessing number: 23\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825064554816 -> node_93825066088608 [label="0 -> 0"];
+    node_93825066088608[label="result:Result_22781:\ntype: reorder\nprocessing number: 24\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825066394416[label="constant:Constant_20388:\ntype: data\nprocessing number: 25\n color:none
+layout_info: 
+0: f16:bfyx::nopad
+
+", shape=box];
+    node_93825066394416 -> node_93825066061872 [label="0 -> 1"];
+    node_93825066061872[label="multiply:Multiply_20876:\ntype: eltwise\nprocessing number: 26\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825066061872 -> node_93825051583360 [label="0 -> 0"];
+    node_93825051583360[label="reshape:Squeeze_15622:\ntype: reshape\nprocessing number: 27\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825051583360 -> node_93825066175424 [label="0 -> 1"];
+    node_93825066175424[label="add:Subtract_15623:\ntype: eltwise\nprocessing number: 28\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825066175424 -> node_93825066060768 [label="0 -> 0"];
+    node_93825066060768[label="multiply:Multiply_15624:\ntype: eltwise\nprocessing number: 29\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825066060768 -> node_93825051587344 [label="0 -> 0"];
+    node_93825051587344[label="reshape:Unsqueeze_15625:\ntype: reshape\nprocessing number: 30\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825051587344 -> node_93825065852976 [label="0 -> 0"];
+    node_93825065852976[label="matmul:MatMul_15627:\ntype: gemm\nprocessing number: 31\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825065852976 -> node_93825064615488 [label="0 -> 1"];
+    node_93825064615488[label="add:Add_15628:\ntype: eltwise\nprocessing number: 32\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825064615488 -> node_93825065854080 [label="0 -> 0"];
+    node_93825064615488 -> node_93825058512512 [label="0 -> 0"];
+    node_93825058512512[label="result:Result_15635:\ntype: reorder\nprocessing number: 33\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825065854080[label="matmul:MatMul_15630:\ntype: gemm\nprocessing number: 34\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825065854080 -> node_93825055768768 [label="0 -> 0"];
+    node_93825066442288[label="constant:Constant_20089:\ntype: data\nprocessing number: 35\n color:none
+layout_info: 
+0: f16:bfyx::nopad
+
+", shape=box];
+    node_93825066442288 -> node_93825055768768 [label="0 -> 1"];
+    node_93825055768768[label="multiply:Multiply_20879:\ntype: eltwise\nprocessing number: 36\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825055768768 -> node_93825051584032 [label="0 -> 0"];
+    node_93825051584032[label="reshape:Squeeze_15631:\ntype: reshape\nprocessing number: 37\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825051584032 -> node_93825061004384 [label="0 -> 0"];
+    node_93825061004384[label="reshape:Unsqueeze_15633:\ntype: reshape\nprocessing number: 38\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825061004384 -> node_93825058517584 [label="0 -> 0"];
+    node_93825058517584[label="result:Result_15636:\ntype: reorder\nprocessing number: 39\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825059940912[label="constant:Constant_19448:\ntype: data\nprocessing number: 40\n color:none
+layout_info: 
+0: i32:bfyx:3:nopad
+
+", shape=box];
+    node_93825066445872[label="constant:Constant_19446:\ntype: data\nprocessing number: 41\n color:none
+layout_info: 
+0: i32:bfyx:2:nopad
+
+", shape=box];
+    node_93825061362800[label="constant:Constant_19444:\ntype: data\nprocessing number: 42\n color:none
+layout_info: 
+0: i32:bfyx:3:nopad
+
+", shape=box];
+    node_93825064560048[label="constant:Constant_19438:\ntype: data\nprocessing number: 43\n color:none
+layout_info: 
+0: i32:bfyx:3:nopad
+
+", shape=box];
+    node_93825061001616[label="constant:Constant_19436:\ntype: data\nprocessing number: 44\n color:none
+layout_info: 
+0: i32:bfyx:2:nopad
+
+", shape=box];
+    node_93825061001088[label="constant:Constant_19434:\ntype: data\nprocessing number: 45\n color:none
+layout_info: 
+0: i32:bfyx:2:nopad
+
+", shape=box];
+    node_93825066314656[label="constant:Constant_19432:\ntype: data\nprocessing number: 46\n color:none
+layout_info: 
+0: i32:bfyx:3:nopad
+
+", shape=box];
+    node_93825060558592[label="constant:Constant_19428:\ntype: data\nprocessing number: 47\n color:none
+layout_info: 
+0: i32:bfyx:2:nopad
+
+", shape=box];
+    node_93825051541920[label="constant:Constant_19426:\ntype: data\nprocessing number: 48\n color:none
+layout_info: 
+0: i32:bfyx:3:nopad
+
+", shape=box];
+    node_93825051541424[label="constant:Constant_19424:\ntype: data\nprocessing number: 49\n color:none
+layout_info: 
+0: i32:bfyx:2:nopad
+
+", shape=box];
+    node_93825051540896[label="constant:Constant_15606:\ntype: data\nprocessing number: 50\n color:none
+layout_info: 
+0: u8:bfyx:1:nopad
+
+", shape=box];
+    node_93825051540896 -> node_93825058509056 [label="0 -> 0"];
+    node_93825058509056[label="result:Result_15634:\ntype: reorder\nprocessing number: 51\n color:none\n Selected kernel: none / any
+layout_info: (invalid layout)
+
+"];
+    node_93825066176064[label="constant:Constant_15578:\ntype: data\nprocessing number: 52\n color:none
+layout_info: 
+0: i32:bfyx:1:nopad
+
+", shape=box];
+}

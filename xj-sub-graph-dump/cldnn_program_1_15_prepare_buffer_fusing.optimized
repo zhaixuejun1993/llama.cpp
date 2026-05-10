@@ -1,0 +1,41 @@
+constant:Constant_75
+constant:Constant_4592
+constant:Constant_3816
+constant:Constant_3814
+constant:Constant_3812
+constant:Constant_3810
+constant:Constant_3808
+constant:Constant_3806
+constant:Constant_3802
+constant:Constant_3800
+constant:Constant_3798
+constant:Constant_3796
+constant:Constant_211
+constant:Constant_204
+constant:Constant_197
+constant:Constant_194
+constant:Constant_187
+constant:Constant_167
+constant:Constant_165
+constant:Constant_160
+constant:Constant_129
+constant:Constant_121
+sqrt:Sqrt_199
+sqrt:Sqrt_183
+power:Power_4593
+power:Power_4596
+convolution:GroupConvolution_164_0_reorder_1
+convert:Multiply_91_cache_r_l0 (reshaped) (view) (view)#5.0
+convert:Multiply_133_cache_s_l0 (reshaped) (view) (view)#22.0
+convert:Unsqueeze_78_model.embed_tokens#0.0
+convert:Unsqueeze_141_node_23#23.0
+convert:Multiply_89_attn_norm-0#2.0
+convert:Convert_159_cache_s_l0 (view) (copy of )#26.0
+convert:Convert_117_cache_r_l0 (view) (copy of )#11.0
+convert:Convert_131_state_update_target-0 (copy of last_conv_states-0)#19.0
+convert:Add_213_node_38#38.0
+convert:Divide_202_k_conv_predelta-0#32_compressed_to_f16
+convert:Divide_186_q_conv_predelta-0#30_compressed_to_f16
+convert:Divide_202_k_conv_predelta-0#32_compressed_to_f16.0
+convert:Divide_186_q_conv_predelta-0#30_compressed_to_f16.0
+

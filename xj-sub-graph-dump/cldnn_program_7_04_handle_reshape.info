@@ -1,0 +1,116 @@
+
+{
+    implementation : null,
+    ptr : node_93825066066048,
+    id : constant:blk.0.ssm_out.weight_postponed_compression,
+    optimized : false,
+    type : input_layout,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:256x256:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 140735005370032,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055509408,
+    id : constant:blk.0.attn_gate.weight_postponed_compression,
+    optimized : false,
+    type : input_layout,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:256x256:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825066110336,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_140735005370032,
+    id : convert:blk.0.ssm_out.weight,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:256x256:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : constant:blk.0.ssm_out.weight_postponed_compression,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : any,
+    dependencies : 93825066066048(0),
+    users : null,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825066110336,
+    id : convert:blk.0.attn_gate.weight,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:256x256:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : constant:blk.0.attn_gate.weight_postponed_compression,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : any,
+    dependencies : 93825055509408(0),
+    users : null,
+}
+
+

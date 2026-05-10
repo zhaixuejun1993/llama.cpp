@@ -11,6 +11,7 @@ namespace op {
 #define GGML_OP_CONVERTER(op) OutputVector op(const NodeContext& context)
 
 GGML_OP_CONVERTER(translate_cont);
+GGML_OP_CONVERTER(translate_concat);
 GGML_OP_CONVERTER(translate_get_rows);
 GGML_OP_CONVERTER(translate_mulmat);
 GGML_OP_CONVERTER(translate_permute);
@@ -28,6 +29,7 @@ GGML_OP_CONVERTER(translate_glu_swiglu);
 GGML_OP_CONVERTER(translate_glu_geglu);
 GGML_OP_CONVERTER(translate_set_rows);
 GGML_OP_CONVERTER(translate_cpy);
+GGML_OP_CONVERTER(translate_argsort);
 GGML_OP_CONVERTER(translate_flash_attn_ext);
 GGML_OP_CONVERTER(translate_pad);
 GGML_OP_CONVERTER(translate_ssm_conv);

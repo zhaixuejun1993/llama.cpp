@@ -21,8 +21,10 @@ OutputVector translate_glu_swiglu(const NodeContext & context) {
     ov::Output<ov::Node> src0;
     ov::Output<ov::Node> src1;
     if (context.get_input_size() == 2) {
-        src0 = context.get_input(0);
-        src1 = context.get_input(1);
+        // src0 = context.get_input(0);
+        src0 = process_view_input_new(context, 0);
+        // src1 = context.get_input(1);
+        src1 = process_view_input_new(context, 1);
     } else {
         // GGML splits along ne[0] (OV last axis) using floor division: nc = ne[0] / 2.
         // Both halves are nc elements; if the dimension is odd, the last element is dropped.

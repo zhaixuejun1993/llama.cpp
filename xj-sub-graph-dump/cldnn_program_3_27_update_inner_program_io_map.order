@@ -1,0 +1,10 @@
+93825058545968 (parameter:linear_attn_mixed_ba-0 (reshaped)#35)
+93825054076416 (parameter:a_softplus-0#39)
+93825051308688 (constant:Constant_11280)
+93825059196368 (constant:Constant_11277)
+93825059959216 (constant:Constant_11274)
+93825058510704 (convert:Convert_10677)
+93825051743408 (stridedslice:b-0#42)
+93825051330064 (reshape:Reshape_9840_b-0 (cont)#43)
+93825058514160 (result:b-0 (cont)#43)
+

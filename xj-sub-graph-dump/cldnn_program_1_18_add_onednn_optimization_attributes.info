@@ -1,0 +1,2784 @@
+
+{
+    implementation : null,
+    ptr : node_93825052746704,
+    id : parameter:leaf_5,
+    optimized : false,
+    type : input_layout,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:1x1x1x1:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : common,
+    dependencies : null,
+    users : 93825052756928,93825055096944,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052745600,
+    id : parameter:inp_tokens,
+    optimized : false,
+    type : input_layout,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:1x1x1x?:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : common,
+    dependencies : null,
+    users : 93825055095840,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052744496,
+    id : parameter:cache_s_l0,
+    optimized : false,
+    type : input_layout,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x?x32768:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : common,
+    dependencies : null,
+    users : 93825053816384,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052743360,
+    id : parameter:cache_r_l0,
+    optimized : false,
+    type : input_layout,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x?x2304:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : common,
+    dependencies : null,
+    users : 93825053814816,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825053798160,
+    id : constant:token_embd.weight,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:128x256:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825058526080,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825053796896,
+    id : constant:blk.0.ssm_ba.weight_postponed_compression,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:4x256:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825058517584,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052866528,
+    id : constant:blk.0.attn_qkv.weight_postponed_compression,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:768x256:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825058515936,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052865520,
+    id : constant:blk.0.attn_norm.weight,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x256:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825055122224,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052864448,
+    id : constant:Reshape_163,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:768x1x1x4:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825058519280,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825059019216,
+    id : constant:Constant_4324,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x1x1:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825052738752,93825052742192,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825059018112,
+    id : constant:Constant_4322,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x1x1:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825058528288,93825058529392,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825059017152,
+    id : constant:Constant_4321,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x1x2:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825058841312,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825059011088,
+    id : constant:Constant_3837,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:3:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825055466864,93825055468000,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825059022576,
+    id : constant:Constant_3836,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx::nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825055466864,93825055468000,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058460464,
+    id : constant:Constant_2111,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:4:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825055462256,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058459840,
+    id : constant:Constant_2108,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:4:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825055462256,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825053228752,
+    id : constant:Constant_2077,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:4:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825055461152,93825055462256,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825053227568,
+    id : constant:Constant_2074,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:4:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825055461152,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052729776,
+    id : constant:Constant_2071,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:4:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825055461152,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052730768,
+    id : constant:Constant_145,
+    optimized : false,
+    type : data,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:1:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825055460016,93825055460016,93825055460016,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,1,
+        output pshape : [1,1],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : parameter:leaf_5,
+    }
+    implementation : null,
+    ptr : node_93825055096944,
+    id : reshape:Squeeze_93,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:1x1:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052746704(0),
+    users : 93825058523872,93825058527184,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,
+        output pshape : [1],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : parameter:leaf_5,
+    }
+    implementation : null,
+    ptr : node_93825052756928,
+    id : reshape:Reshape_143,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:1:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052746704(0),
+    users : 93825055460016,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,-1,
+        output pshape : [1,?],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : parameter:inp_tokens,
+    }
+    implementation : null,
+    ptr : node_93825055095840,
+    id : reshape:Squeeze_74,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:1x?:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052745600(0),
+    users : 93825058526080,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825053816384,
+    id : convert:Convert_1406,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x?x32768:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : parameter:cache_s_l0,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052744496(0),
+    users : 93825052738752,93825052764832,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825053814816,
+    id : convert:Convert_1405,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x?x2304:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : parameter:cache_r_l0,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052743360(0),
+    users : 93825052742192,93825055098048,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058517584,
+    id : convert:blk.0.ssm_ba.weight,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:4x256:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : constant:blk.0.ssm_ba.weight_postponed_compression,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : 93825053796896(0),
+    users : 93825058521568,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058515936,
+    id : convert:blk.0.attn_qkv.weight,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:768x256:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : constant:blk.0.attn_qkv.weight_postponed_compression,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : true,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : 93825052866528(0),
+    users : 93825058520432,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : -1,32768,
+        output pshape : [?,32768],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : convert:Convert_1406,
+    }
+    implementation : null,
+    ptr : node_93825052764832,
+    id : reshape:Squeeze_154,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:?x32768:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825053816384(0),
+    users : 93825058523872,93825058524976,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : -1,2304,
+        output pshape : [?,2304],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : convert:Convert_1405,
+    }
+    implementation : null,
+    ptr : node_93825055098048,
+    id : reshape:Squeeze_95,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:?x2304:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825053814816(0),
+    users : 93825058522736,93825058527184,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058526080,
+    id : gather:Gather_76,
+    optimized : false,
+    gather info : 
+    {
+        compressed weights : false,
+        output shape : [],
+        batch_dim : 0,
+        axis : 0,
+        input id : constant:token_embd.weight,
+    }
+    type : gather,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x?x256:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825053798160(0),93825055095840(0),
+    users : 93825055100256,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052742192,
+    id : multiply:Multiply_91_cache_r_l0 (reshaped) (view) (view)#5,
+    optimized : false,
+    eltwise info : 
+    {
+        mode : product,
+        input_1 : constant:Constant_4324,
+        input_0 : convert:Convert_1405,
+    }
+    type : eltwise,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x?x2304:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825053814816(0),93825059019216(0),
+    users : 93825055105232,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052738752,
+    id : multiply:Multiply_133_cache_s_l0 (reshaped) (view) (view)#22,
+    optimized : false,
+    eltwise info : 
+    {
+        mode : product,
+        input_1 : constant:Constant_4324,
+        input_0 : convert:Convert_1406,
+    }
+    type : eltwise,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x?x32768:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825053816384(0),93825059019216(0),
+    users : 93825055108576,
+}
+
+
+
+{
+    implementation : null,
+    strided_slice info : 
+    {
+        end mask : 0,
+        shrink axis mask : ,
+        strides : 1,
+        new axis mask : ,
+        begin mask : 0,
+        end : 1,
+        ellipsis mask : ,
+        begin : 1,
+        stride_param id : constant:Constant_145,
+        end_param id : constant:Constant_145,
+        begin_param id : constant:Constant_145,
+        input id : reshape:Reshape_143,
+    }
+    ptr : node_93825055460016,
+    id : stridedslice:Slice_148,
+    optimized : false,
+    type : strided_slice,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:0:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052756928(0),93825052730768(0),93825052730768(0),93825052730768(0),
+    users : 93825052763696,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058523872,
+    id : gather:Gather_139,
+    optimized : false,
+    gather info : 
+    {
+        compressed weights : false,
+        output shape : [1,1,32768],
+        batch_dim : 0,
+        axis : 0,
+        input id : reshape:Squeeze_154,
+    }
+    type : gather,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x32768:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052764832(0),93825055096944(0),
+    users : 93825055099152,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058527184,
+    id : gather:Gather_97,
+    optimized : false,
+    gather info : 
+    {
+        compressed weights : false,
+        output shape : [1,1,2304],
+        batch_dim : 0,
+        axis : 0,
+        input id : reshape:Squeeze_95,
+    }
+    type : gather,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x2304:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055098048(0),93825055096944(0),
+    users : 93825052755760,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,1,-1,256,
+        output pshape : [1,1,?,256],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : gather:Gather_76,
+    }
+    implementation : null,
+    ptr : node_93825055100256,
+    id : reshape:Unsqueeze_78_model.embed_tokens#0,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x?x256:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825058526080(0),
+    users : 93825055122224,93825055113696,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,0,
+        output pshape : [1,0],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : stridedslice:Slice_148,
+    }
+    implementation : null,
+    ptr : node_93825052763696,
+    id : reshape:Squeeze_152,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : i32:bfyx:1x0:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055460016(0),
+    users : 93825058522736,93825058524976,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,1,1,32768,
+        output pshape : [1,1,1,32768],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : gather:Gather_139,
+    }
+    implementation : null,
+    ptr : node_93825055099152,
+    id : reshape:Unsqueeze_141_node_23#23,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x1x32768:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825058523872(0),
+    users : 93825055115392,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,1,768,3,
+        output pshape : [1,1,768,3],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : gather:Gather_97,
+    }
+    implementation : null,
+    ptr : node_93825052755760,
+    id : reshape:Reshape_119_conv_states_reshaped-0#12,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x768x3:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825058527184(0),
+    users : 93825058842224,
+}
+
+
+
+{
+    rms_info : 
+    {
+        epsilon : 1e-05,
+        input_id : reshape:Unsqueeze_78_model.embed_tokens#0,
+    }
+    implementation : null,
+    ptr : node_93825055122224,
+    id : rms:Multiply_89_attn_norm-0#2,
+    optimized : false,
+    type : rms,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x?x256:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055100256(0),93825052865520(0),
+    users : 93825058520432,93825058521568,93825055103664,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055105232,
+    id : result:cache_r_l0 (reshaped) (view) (view)#5,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x?x2304:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : multiply:Multiply_91_cache_r_l0 (reshaped) (view) (view)#5,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : ocl,
+    dependencies : 93825052742192(0),
+    users : null,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055108576,
+    id : result:cache_s_l0 (reshaped) (view) (view)#22,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x?x32768:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : multiply:Multiply_133_cache_s_l0 (reshaped) (view) (view)#22,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : ocl,
+    dependencies : 93825052738752(0),
+    users : null,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058524976,
+    id : gather:Gather_156,
+    optimized : false,
+    gather info : 
+    {
+        compressed weights : false,
+        output shape : [1,0,32768],
+        batch_dim : 0,
+        axis : 0,
+        input id : reshape:Squeeze_154,
+    }
+    type : gather,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x0x32768:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052764832(0),93825052763696(0),
+    users : 93825052754688,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058522736,
+    id : gather:Gather_114,
+    optimized : false,
+    gather info : 
+    {
+        compressed weights : false,
+        output shape : [1,0,2304],
+        batch_dim : 0,
+        axis : 0,
+        input id : reshape:Squeeze_95,
+    }
+    type : gather,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x0x2304:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055098048(0),93825052763696(0),
+    users : 93825052752224,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055113696,
+    id : result:model.embed_tokens#0,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x?x256:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : reshape:Unsqueeze_78_model.embed_tokens#0,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : ocl,
+    dependencies : 93825055100256(0),
+    users : null,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058521568,
+    id : fullyconnected:MatMul_203_linear_attn_mixed_ba-0#34,
+    optimized : false,
+    fully connected info : 
+    {
+        compressed weights : false,
+        bias id : no bias,
+        weights id : input_info(pid:convert:blk.0.ssm_ba.weight,idx:0),
+    }
+    type : fully_connected,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x?x4:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : onednn,
+    dependencies : 93825055122224(0),93825058517584(0),
+    users : 93825052761440,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058520432,
+    id : fullyconnected:MatMul_120_node_13#13,
+    optimized : false,
+    fully connected info : 
+    {
+        compressed weights : false,
+        bias id : no bias,
+        weights id : input_info(pid:convert:blk.0.attn_qkv.weight,idx:0),
+    }
+    type : fully_connected,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x?x768:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : onednn,
+    dependencies : 93825055122224(0),93825058515936(0),
+    users : 93825055464528,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,1,0,32768,
+        output pshape : [1,1,0,32768],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : gather:Gather_156,
+    }
+    implementation : null,
+    ptr : node_93825052754688,
+    id : reshape:Convert_159_cache_s_l0 (view) (copy of )#26,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x0x32768:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825058524976(0),
+    users : 93825055110352,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,1,0,2304,
+        output pshape : [1,1,0,2304],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : gather:Gather_114,
+    }
+    implementation : null,
+    ptr : node_93825052752224,
+    id : reshape:Convert_117_cache_r_l0 (view) (copy of )#11,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x0x2304:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825058522736(0),
+    users : 93825055106928,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055115392,
+    id : result:node_23#23,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x1x32768:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : reshape:Unsqueeze_141_node_23#23,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : ocl,
+    dependencies : 93825055099152(0),
+    users : null,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,-1,2,2,
+        output pshape : [1,?,2,2],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : fullyconnected:MatMul_203_linear_attn_mixed_ba-0#34,
+    }
+    implementation : null,
+    ptr : node_93825052761440,
+    id : reshape:Reshape_205_linear_attn_mixed_ba-0 (reshaped)#35,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x?x2x2:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825058521568(0),
+    users : 93825055461152,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055464528,
+    id : transpose:Transpose_122_qkv_mixed_transposed-0#15,
+    permute info : 
+    {
+        permute order : 0, 1, 3, 2,
+        input id : fullyconnected:MatMul_120_node_13#13,
+    }
+    optimized : false,
+    type : permute,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x768x?:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825058520432(0),
+    users : 93825058842224,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055103664,
+    id : result:attn_norm-0#2,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x?x256:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : rms:Multiply_89_attn_norm-0#2,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : ocl,
+    dependencies : 93825055122224(0),
+    users : null,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058842224,
+    id : concat:Concat_123_conv_input-0#16,
+    optimized : false,
+    type : concatenation,
+    concat info : 
+    {
+        inputs count : 2,
+        inputs : reshape:Reshape_119_conv_states_reshaped-0#12, count: 2304, transpose:Transpose_122_qkv_mixed_transposed-0#15, count: ?,
+        concat axis : 3,
+    }
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x768x3..:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : onednn,
+    dependencies : 93825052755760(0),93825055464528(0),
+    users : 93825055462256,93825053473632,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825053473632,
+    id : reorder:_reshape_input_reshape:Reshape_161_0_reorder_0_reshape:Reshape_161,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x768x3..:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : concat:Concat_123_conv_input-0#16,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825058842224(0),
+    users : 93825052758064,
+}
+
+
+
+{
+    implementation : null,
+    strided_slice info : 
+    {
+        end mask : 1,1,1,0,
+        shrink axis mask : ,
+        strides : 1,1,1,1,
+        new axis mask : ,
+        begin mask : 1,1,1,0,
+        end : 0,0,0,2,
+        ellipsis mask : ,
+        begin : 0,0,0,1,
+        stride_param id : constant:Constant_2077,
+        end_param id : constant:Constant_2074,
+        begin_param id : constant:Constant_2071,
+        input id : reshape:Reshape_205_linear_attn_mixed_ba-0 (reshaped)#35,
+    }
+    ptr : node_93825055461152,
+    id : stridedslice:a-0#36,
+    optimized : false,
+    type : strided_slice,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x?x2x1:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052761440(0),93825052729776(0),93825053227568(0),93825053228752(0),
+    users : 93825052762608,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055110352,
+    id : result:cache_s_l0 (view) (copy of )#26,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x0x32768:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : reshape:Convert_159_cache_s_l0 (view) (copy of )#26,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : ocl,
+    dependencies : 93825052754688(0),
+    users : null,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055106928,
+    id : result:cache_r_l0 (view) (copy of )#11,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x0x2304:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : reshape:Convert_117_cache_r_l0 (view) (copy of )#11,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : ocl,
+    dependencies : 93825052752224(0),
+    users : null,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,768,67,
+        output pshape : [1,768,67],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : reorder:_reshape_input_reshape:Reshape_161_0_reorder_0_reshape:Reshape_161,
+    }
+    implementation : null,
+    ptr : node_93825052758064,
+    id : reshape:Reshape_161,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x768x67:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825053473632(0),
+    users : 93825055296816,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055296816,
+    id : reshape:Reshape_161_0_reorder_0,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:b_fs_yx_fsv16:1x768x67:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : reshape:Reshape_161,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : onednn,
+    dependencies : 93825052758064(0),
+    users : 93825058519280,
+}
+
+
+
+{
+    implementation : null,
+    strided_slice info : 
+    {
+        end mask : 1,1,1,0,
+        shrink axis mask : ,
+        strides : 1,1,1,1,
+        new axis mask : ,
+        begin mask : 1,1,1,0,
+        end : 0,0,0,67,
+        ellipsis mask : ,
+        begin : 0,0,0,64,
+        stride_param id : constant:Constant_2077,
+        end_param id : constant:Constant_2111,
+        begin_param id : constant:Constant_2108,
+        input id : concat:Concat_123_conv_input-0#16,
+    }
+    ptr : node_93825055462256,
+    id : stridedslice:last_conv_states-0#17,
+    optimized : false,
+    type : strided_slice,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x768x..3:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825058842224(0),93825058459840(0),93825058460464(0),93825053228752(0),
+    users : 93825052753360,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,1,-1,2,
+        output pshape : [1,1,?,2],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : stridedslice:a-0#36,
+    }
+    implementation : null,
+    ptr : node_93825052762608,
+    id : reshape:Reshape_212_a-0 (cont)#37,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x?x2:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055461152(0),
+    users : 93825058841312,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058519280,
+    id : convolution:GroupConvolution_164,
+    optimized : false,
+    type : convolution,
+    convolution info : 
+    {
+        has zero points for activations : false,
+        deformable_groups : 1,
+        dilation : Strides{1},
+        groups : 768,
+        auto pad : explicit,
+        padding below : CoordinateDiff{0},
+        padding above : CoordinateDiff{0},
+        has zero points for weights : false,
+        stride : Strides{1},
+    }
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:b_fs_yx_fsv16:1x768x64:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : onednn,
+    dependencies : 93825055296816(0),93825052864448(0),
+    users : 93825053819744,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,1,1,2304,
+        output pshape : [1,1,1,2304],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : stridedslice:last_conv_states-0#17,
+    }
+    implementation : null,
+    ptr : node_93825052753360,
+    id : reshape:Convert_131_state_update_target-0 (copy of last_conv_states-0)#19,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x1x2304:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055462256(0),
+    users : 93825055120416,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058841312,
+    id : add:Add_213_node_38#38,
+    optimized : false,
+    eltwise info : 
+    {
+        mode : sum,
+        input_1 : constant:Constant_4321,
+        input_0 : reshape:Reshape_212_a-0 (cont)#37,
+    }
+    type : eltwise,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:1x1x?x2:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052762608(0),93825059017152(0),
+    users : 93825055117136,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825053819744,
+    id : convert:Convert_3839,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x768x64:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : convolution:GroupConvolution_164,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825058519280(0),
+    users : 93825055465696,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055465696,
+    id : transpose:Transpose_166_decompressed_to_f32,
+    permute info : 
+    {
+        permute order : 0, 2, 1,
+        input id : convert:Convert_3839,
+    }
+    optimized : false,
+    type : permute,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x768:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825053819744(0),
+    users : 93825052759168,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055120416,
+    id : result:state_update_target-0 (copy of last_conv_states-0)#19,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x1x2304:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : reshape:Convert_131_state_update_target-0 (copy of last_conv_states-0)#19,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : ocl,
+    dependencies : 93825052753360(0),
+    users : null,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055117136,
+    id : result:node_38#38,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x?x2:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : add:Add_213_node_38#38,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : ocl,
+    dependencies : 93825058841312(0),
+    users : null,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,1,64,768,
+        output pshape : [1,1,64,768],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : transpose:Transpose_166_decompressed_to_f32,
+    }
+    implementation : null,
+    ptr : node_93825052759168,
+    id : reshape:Reshape_168_conv_output_raw-0#27,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x64x768:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055465696(0),
+    users : 93825055463360,
+}
+
+
+
+{
+    activation info : 
+    {
+        additional_params input : input_info(pid:,idx:0),
+        additional_params.b : 0,
+        additional_params.a : 1,
+        activation_func : 39,
+    }
+    implementation : null,
+    ptr : node_93825055463360,
+    id : swish:Multiply_170_conv_output_silu-0#28,
+    optimized : false,
+    type : activation,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x1x64x768:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052759168(0),
+    users : 93825052760304,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,64,768,
+        output pshape : [1,64,768],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : swish:Multiply_170_conv_output_silu-0#28,
+    }
+    implementation : null,
+    ptr : node_93825052760304,
+    id : reshape:Reshape_188,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x768:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055463360(0),
+    users : 93825055466864,93825055468000,
+}
+
+
+
+{
+    crop info : 
+    {
+        output_idx : 1,
+        num_splits : 1,
+        axis : 2,
+        offset : [b:0, f:0, x:0, y:256, z:1, w:1, u:1, v:1, g:1],
+        reference input size : [b:1, f:1, x:1, y:1, z:1, w:1, u:1, v:1, g:1],
+    }
+    implementation : null,
+    ptr : node_93825055468000,
+    id : variadicsplit:VariadicSplit_3838.out1,
+    optimized : false,
+    type : crop,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x256:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052760304(0),93825059022576(0),93825059011088(0),
+    users : 93825055101424,
+}
+
+
+
+{
+    crop info : 
+    {
+        output_idx : 0,
+        num_splits : 1,
+        axis : 2,
+        offset : [b:0, f:0, x:0, y:0, z:1, w:1, u:1, v:1, g:1],
+        reference input size : [b:1, f:1, x:1, y:1, z:1, w:1, u:1, v:1, g:1],
+    }
+    implementation : null,
+    ptr : node_93825055466864,
+    id : variadicsplit:VariadicSplit_3838.out0,
+    optimized : false,
+    type : crop,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x256:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052760304(0),93825059022576(0),93825059011088(0),
+    users : 93825055102560,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,64,2,-1,
+        output pshape : [1,64,2,128],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : variadicsplit:VariadicSplit_3838.out1,
+    }
+    implementation : null,
+    ptr : node_93825055101424,
+    id : reshape:k_conv-0#31,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x2x128:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055468000(0),
+    users : 93825052737584,93825052741088,93825052741088,
+}
+
+
+
+{
+    reshape info : 
+    {
+        special zero : 0,
+        output pattern : 1,64,2,-1,
+        output pshape : [1,64,2,128],
+        reshape mode : 0,
+        output shape : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : variadicsplit:VariadicSplit_3838.out0,
+    }
+    implementation : null,
+    ptr : node_93825055102560,
+    id : reshape:q_conv-0#29,
+    optimized : true,
+    type : reshape,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x2x128:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055466864(0),
+    users : 93825058530496,93825052739952,93825052739952,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052741088,
+    id : multiply:Multiply_196,
+    optimized : false,
+    eltwise info : 
+    {
+        mode : product,
+        input_1 : reshape:k_conv-0#31,
+        input_0 : reshape:k_conv-0#31,
+    }
+    type : eltwise,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x2x128:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055101424(0),93825055101424(0),
+    users : 93825052751120,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052739952,
+    id : multiply:Multiply_180,
+    optimized : false,
+    eltwise info : 
+    {
+        mode : product,
+        input_1 : reshape:q_conv-0#29,
+        input_0 : reshape:q_conv-0#29,
+    }
+    type : eltwise,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x2x128:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055102560(0),93825055102560(0),
+    users : 93825052750016,
+}
+
+
+
+{
+    reduce info : 
+    {
+        mode : 4,
+        keep_dims : 1,
+        axes : 3,
+        input id : multiply:Multiply_196,
+    }
+    implementation : null,
+    ptr : node_93825052751120,
+    id : reducesum:ReduceSum_198,
+    optimized : false,
+    type : reduce,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x2x1:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+        fused primitive idx 0 : 
+        {
+            output layout : 
+            {
+                size : f32:bfyx:1x64x2x1:nopad,
+                format : bfyx,
+                data type : f32,
+            }
+            dep start_idx : -1,
+            dependencies : ,
+            id : sqrt:Sqrt_199,
+        }
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052741088(0),
+    users : 93825058529392,
+}
+
+
+
+{
+    reduce info : 
+    {
+        mode : 4,
+        keep_dims : 1,
+        axes : 3,
+        input id : multiply:Multiply_180,
+    }
+    implementation : null,
+    ptr : node_93825052750016,
+    id : reducesum:ReduceSum_182,
+    optimized : false,
+    type : reduce,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x2x1:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+        fused primitive idx 0 : 
+        {
+            output layout : 
+            {
+                size : f32:bfyx:1x64x2x1:nopad,
+                format : bfyx,
+                data type : f32,
+            }
+            dep start_idx : -1,
+            dependencies : ,
+            id : sqrt:Sqrt_183,
+        }
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052739952(0),
+    users : 93825058528288,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058529392,
+    id : maximum:Maximum_201,
+    optimized : false,
+    eltwise info : 
+    {
+        mode : max,
+        input_1 : constant:Constant_4322,
+        input_0 : reducesum:ReduceSum_198,
+    }
+    type : eltwise,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x2x1:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+        fused primitive idx 0 : 
+        {
+            output layout : 
+            {
+                size : f32:bfyx:1x64x2x1:nopad,
+                format : bfyx,
+                data type : f32,
+            }
+            dep start_idx : -1,
+            dependencies : ,
+            id : power:Power_4593,
+        }
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052751120(0),93825059018112(0),
+    users : 93825052737584,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058528288,
+    id : maximum:Maximum_185,
+    optimized : false,
+    eltwise info : 
+    {
+        mode : max,
+        input_1 : constant:Constant_4322,
+        input_0 : reducesum:ReduceSum_182,
+    }
+    type : eltwise,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x2x1:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+        fused primitive idx 0 : 
+        {
+            output layout : 
+            {
+                size : f32:bfyx:1x64x2x1:nopad,
+                format : bfyx,
+                data type : f32,
+            }
+            dep start_idx : -1,
+            dependencies : ,
+            id : power:Power_4596,
+        }
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825052750016(0),93825059018112(0),
+    users : 93825058530496,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052737584,
+    id : multiply:Divide_202_k_conv_predelta-0#32,
+    optimized : false,
+    eltwise info : 
+    {
+        mode : product,
+        input_1 : maximum:Maximum_201,
+        input_0 : reshape:k_conv-0#31,
+    }
+    type : eltwise,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x2x128:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055101424(0),93825058529392(0),
+    users : 93825055112000,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058530496,
+    id : multiply:Divide_186_q_conv_predelta-0#30,
+    optimized : false,
+    eltwise info : 
+    {
+        mode : product,
+        input_1 : maximum:Maximum_185,
+        input_0 : reshape:q_conv-0#29,
+    }
+    type : eltwise,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x2x128:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : ocl,
+    dependencies : 93825055102560(0),93825058528288(0),
+    users : 93825055118800,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055112000,
+    id : result:k_conv_predelta-0#32,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x2x128:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : multiply:Divide_202_k_conv_predelta-0#32,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : ocl,
+    dependencies : 93825052737584(0),
+    users : null,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055118800,
+    id : result:q_conv_predelta-0#30,
+    optimized : false,
+    type : reorder,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f32:bfyx:1x64x2x128:nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : multiply:Divide_186_q_conv_predelta-0#30,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : ocl,
+    dependencies : 93825058530496(0),
+    users : null,
+}
+
+

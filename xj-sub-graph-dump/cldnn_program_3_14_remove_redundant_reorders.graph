@@ -1,0 +1,55 @@
+digraph cldnn_program {
+    node_93825058545968[label="parameter:linear_attn_mixed_ba-0 (reshaped)#35:\ntype: input_layout\nprocessing number: 1\n color:none\n Selected kernel: none / common
+layout_info: 
+0: f32:bfyx:1x?x2x2:nopad
+
+"];
+    node_93825058545968 -> node_93825058510704 [label="0 -> 0"] [color=red];
+    node_93825054076416[label="parameter:a_softplus-0#39:\ntype: input_layout\nprocessing number: 2\n color:none\n Selected kernel: none / common
+layout_info: 
+0: f32:bfyx:1x1x?x2:nopad
+
+"];
+    node_93825051308688[label="constant:Constant_11280:\ntype: data\nprocessing number: 3\n color:none
+layout_info: 
+0: i32:bfyx:4:nopad
+
+", shape=box];
+    node_93825051308688 -> node_93825051743408 [label="0 -> 3"];
+    node_93825059196368[label="constant:Constant_11277:\ntype: data\nprocessing number: 4\n color:none
+layout_info: 
+0: i32:bfyx:4:nopad
+
+", shape=box];
+    node_93825059196368 -> node_93825051743408 [label="0 -> 2"];
+    node_93825059959216[label="constant:Constant_11274:\ntype: data\nprocessing number: 5\n color:none
+layout_info: 
+0: i32:bfyx:4:nopad
+
+", shape=box];
+    node_93825059959216 -> node_93825051743408 [label="0 -> 1"];
+    node_93825058510704[label="convert:Convert_10677:\ntype: reorder\nprocessing number: 6\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:1x?x2x2:nopad
+
+"];
+    node_93825058510704 -> node_93825051743408 [label="0 -> 0"] [color=red];
+    node_93825051743408[label="stridedslice:b-0#42:\ntype: strided_slice\nprocessing number: 7\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:1x?x2x1:nopad
+preferred_in_fmt:any:bfyx:bfyx:bfyx
+"];
+    node_93825051743408 -> node_93825051330064 [label="0 -> 0"] [color=red];
+    node_93825051330064[label="reshape:Reshape_9840_b-0 (cont)#43:\ntype: reshape\nprocessing number: 8\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:1x?x2x1:nopad
+preferred_in_fmt:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825051330064 -> node_93825058514160 [label="0 -> 0"] [color=red];
+    node_93825058514160[label="result:b-0 (cont)#43:\ntype: reorder\nprocessing number: 9\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: f32:bfyx:1x?x2x1:nopad
+
+"];
+}

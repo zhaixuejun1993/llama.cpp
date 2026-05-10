@@ -1,0 +1,136 @@
+
+{
+    implementation : wait_for_events,
+    cl dump_ info : 
+    {
+        kernel_entry : ,
+        batch_hash : ,
+    }
+    ptr : node_93825051343744,
+    id : constant:Constant_20388,
+    optimized : false,
+    type : input_layout,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx::nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825061922992,
+}
+
+
+
+{
+    implementation : wait_for_events,
+    cl dump_ info : 
+    {
+        kernel_entry : ,
+        batch_hash : ,
+    }
+    ptr : node_93825066396016,
+    id : constant:Constant_20089,
+    optimized : false,
+    type : input_layout,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx::nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825051585136,
+}
+
+
+
+{
+    implementation : broadcast_gpu_ref,
+    cl dump_ info : 
+    {
+        kernel_entry : ,
+        batch_hash : ,
+    }
+    ptr : node_93825061922992,
+    id : broadcast:constant:Constant_20388_broadcasted0,
+    broadcast info : 
+    {
+        broadcast axes : ,
+        broadcast_sizes : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : constant:Constant_20388,
+    }
+    optimized : false,
+    type : broadcast,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:2x128x1:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : any,
+    dependencies : 93825051343744(0),
+    users : null,
+}
+
+
+
+{
+    implementation : broadcast_gpu_ref,
+    cl dump_ info : 
+    {
+        kernel_entry : ,
+        batch_hash : ,
+    }
+    ptr : node_93825051585136,
+    id : broadcast:constant:Constant_20089_broadcasted1,
+    broadcast info : 
+    {
+        broadcast axes : ,
+        broadcast_sizes : [b:0, f:0, x:0, y:0, z:0, w:0, u:0, v:0, g:0],
+        input id : constant:Constant_20089,
+    }
+    optimized : false,
+    type : broadcast,
+    valid output layout : true,
+    output layouts : 
+    {
+        0 : f16:bfyx:2x128x1:nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : true,
+    output : true,
+    preferred impl : any,
+    dependencies : 93825066396016(0),
+    users : null,
+}
+
+

@@ -1,0 +1,24 @@
+digraph cldnn_program {
+    node_93825051343744[label="constant:Constant_20388:\ntype: input_layout\nprocessing number: 1\n color:none\n Selected kernel: wait_for_events / any
+layout_info: 
+0: f16:bfyx::nopad
+
+"];
+    node_93825051343744 -> node_93825061922992 [label="0 -> 0"] [color=red];
+    node_93825066396016[label="constant:Constant_20089:\ntype: input_layout\nprocessing number: 2\n color:none\n Selected kernel: wait_for_events / any
+layout_info: 
+0: f16:bfyx::nopad
+
+"];
+    node_93825066396016 -> node_93825051585136 [label="0 -> 0"] [color=red];
+    node_93825061922992[label="broadcast:constant:Constant_20388_broadcasted0:\ntype: broadcast\nprocessing number: 3\n color:none\n Selected kernel: broadcast_gpu_ref / any
+layout_info: 
+0: f16:bfyx:2x128x1:nopad
+
+"];
+    node_93825051585136[label="broadcast:constant:Constant_20089_broadcasted1:\ntype: broadcast\nprocessing number: 4\n color:none\n Selected kernel: broadcast_gpu_ref / any
+layout_info: 
+0: f16:bfyx:2x128x1:nopad
+
+"];
+}

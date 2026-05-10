@@ -1,0 +1,2 @@
+shape: [b:1, f:1, x:2304, y:0, z:1, w:1, u:1, v:1, g:1] (count: 0, addr: 0xffffaaad57472800, original format: bfyx)
+Empty buffer

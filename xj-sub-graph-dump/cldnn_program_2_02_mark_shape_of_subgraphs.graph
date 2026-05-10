@@ -1,0 +1,35 @@
+digraph cldnn_program {
+    node_93825055124352[label="constant:blk.0.ssm_ba.weight_postponed_compression:\ntype: input_layout\nprocessing number: 1\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:4x256:nopad
+
+"];
+    node_93825055124352 -> node_93825058507296 [label="0 -> 0"] [color=red];
+    node_93825058507296[label="convert:blk.0.ssm_ba.weight:\ntype: reorder\nprocessing number: 2\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:4x256:nopad
+
+"];
+    node_93825055123312[label="constant:blk.0.attn_qkv.weight_postponed_compression:\ntype: input_layout\nprocessing number: 3\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:768x256:nopad
+
+"];
+    node_93825055123312 -> node_93825058514160 [label="0 -> 0"] [color=red];
+    node_93825058514160[label="convert:blk.0.attn_qkv.weight:\ntype: reorder\nprocessing number: 4\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:768x256:nopad
+
+"];
+    node_93825052747808[label="constant:Reshape_163:\ntype: input_layout\nprocessing number: 5\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:768x1x1x4:nopad
+
+"];
+    node_93825052747808 -> node_93825058509056 [label="0 -> 0"] [color=red];
+    node_93825058509056[label="constant:Reshape_163_weights_reorder_0:\ntype: reorder\nprocessing number: 6\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:custom:768x1x1x4x1:nopad
+
+"];
+}

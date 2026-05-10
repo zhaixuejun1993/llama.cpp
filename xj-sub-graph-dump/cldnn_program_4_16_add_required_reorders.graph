@@ -1,0 +1,219 @@
+digraph cldnn_program {
+    node_93825061424448[label="parameter:Parameter_15605:\ntype: input_layout\nprocessing number: 1\n color:none\n Selected kernel: none / common
+layout_info: 
+0: i32:bfyx:1:nopad
+
+"];
+    node_93825061424448 -> node_93825064554816 [label="0 -> 0"] [color=red];
+    node_93825061424448 -> node_93825066156928 [label="0 -> 1"] [color=red];
+    node_93825061424448 -> node_93825066157568 [label="0 -> 1"] [color=red];
+    node_93825061424448 -> node_93825066315808 [label="0 -> 1"] [color=red];
+    node_93825061424448 -> node_93825066074400 [label="0 -> 1"] [color=red];
+    node_93825061424448 -> node_93825066075504 [label="0 -> 1"] [color=red];
+    node_93825061423312[label="parameter:Parameter_15604:\ntype: input_layout\nprocessing number: 2\n color:none\n Selected kernel: none / common
+layout_info: 
+0: f16:bfyx:2x64x1:nopad
+
+"];
+    node_93825061423312 -> node_93825066075504 [label="0 -> 0"] [color=red];
+    node_93825061422176[label="parameter:Parameter_15603:\ntype: input_layout\nprocessing number: 3\n color:none\n Selected kernel: none / common
+layout_info: 
+0: f16:bfyx:2x64x1:nopad
+
+"];
+    node_93825061422176 -> node_93825066074400 [label="0 -> 0"] [color=red];
+    node_93825061421040[label="parameter:Parameter_15602:\ntype: input_layout\nprocessing number: 4\n color:none\n Selected kernel: none / common
+layout_info: 
+0: f16:bfyx:2x64x128:nopad
+
+"];
+    node_93825061421040 -> node_93825066315808 [label="0 -> 0"] [color=red];
+    node_93825055772112[label="parameter:Parameter_15601:\ntype: input_layout\nprocessing number: 5\n color:none\n Selected kernel: none / common
+layout_info: 
+0: f16:bfyx:2x64x128:nopad
+
+"];
+    node_93825055772112 -> node_93825066157568 [label="0 -> 0"] [color=red];
+    node_93825055770976[label="parameter:Parameter_15600:\ntype: input_layout\nprocessing number: 6\n color:none\n Selected kernel: none / common
+layout_info: 
+0: f16:bfyx:2x64x128:nopad
+
+"];
+    node_93825055770976 -> node_93825066156928 [label="0 -> 0"] [color=red];
+    node_93825055769872[label="parameter:Parameter_15599:\ntype: input_layout\nprocessing number: 7\n color:none\n Selected kernel: none / common
+layout_info: 
+0: f16:bfyx:2x128x128:nopad
+
+"];
+    node_93825055769872 -> node_93825066059664 [label="0 -> 0"] [color=red];
+    node_93825066068336[label="constant:Parameter_15605_inc:\ntype: data\nprocessing number: 8\n color:none
+layout_info: 
+0: i32:bfyx:1:nopad
+
+", shape=box];
+    node_93825066068336 -> node_93825064554816 [label="0 -> 1"];
+    node_93825066394416[label="constant:Constant_20388:\ntype: data\nprocessing number: 9\n color:none
+layout_info: 
+0: f16:bfyx::nopad
+
+", shape=box];
+    node_93825066394416 -> node_93825066060768 [label="0 -> 0"];
+    node_93825066060768[label="broadcast:constant:Constant_20388_broadcasted0:\ntype: broadcast\nprocessing number: 10\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:2x128x1:nopad
+
+", shape=box];
+    node_93825066060768 -> node_93825065851872 [label="0 -> 2"];
+    node_93825066442288[label="constant:Constant_20089:\ntype: data\nprocessing number: 11\n color:none
+layout_info: 
+0: f16:bfyx::nopad
+
+", shape=box];
+    node_93825066442288 -> node_93825066061872 [label="0 -> 0"];
+    node_93825066061872[label="broadcast:constant:Constant_20089_broadcasted1:\ntype: broadcast\nprocessing number: 12\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:2x128x1:nopad
+
+", shape=box];
+    node_93825066061872 -> node_93825065854080 [label="0 -> 2"];
+    node_93825051540896[label="constant:Constant_15606:\ntype: data\nprocessing number: 13\n color:none
+layout_info: 
+0: u8:bfyx:1:nopad
+
+", shape=box];
+    node_93825066075504[label="gather:Gather_15611:\ntype: gather\nprocessing number: 14\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x1x1:nopad
+preferred_in_fmt:bfyx:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825066075504 -> node_93825051344848 [label="0 -> 0"] [color=red];
+    node_93825066074400[label="gather:Gather_15610:\ntype: gather\nprocessing number: 15\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x1x1:nopad
+preferred_in_fmt:bfyx:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825066074400 -> node_93825066059664 [label="0 -> 1"] [color=red];
+    node_93825066315808[label="gather:Gather_15609:\ntype: gather\nprocessing number: 16\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x1x128:nopad
+preferred_in_fmt:bfyx:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825066315808 -> node_93825051342608 [label="0 -> 0"] [color=red];
+    node_93825066157568[label="gather:Gather_15608:\ntype: gather\nprocessing number: 17\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x1x128:nopad
+preferred_in_fmt:bfyx:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825066157568 -> node_93825065852976 [label="0 -> 1"] [color=red];
+    node_93825066157568 -> node_93825051586240 [label="0 -> 0"] [color=red];
+    node_93825066156928[label="gather:Gather_15607:\ntype: gather\nprocessing number: 18\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x1x128:nopad
+preferred_in_fmt:bfyx:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825066156928 -> node_93825061003280 [label="0 -> 0"] [color=red];
+    node_93825064554816[label="add:Parameter_15605_update:\ntype: eltwise\nprocessing number: 19\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: i32:bfyx:1:nopad
+
+"];
+    node_93825051344848[label="reshape:Squeeze_15616:\ntype: reshape\nprocessing number: 20\n color:none\n optimized out\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x1:nopad
+preferred_in_fmt:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825051344848 -> node_93825066175424 [label="0 -> 2"] [color=red];
+    node_93825051342608[label="reshape:Squeeze_15614:\ntype: reshape\nprocessing number: 21\n color:none\n optimized out\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x128:nopad
+preferred_in_fmt:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825051342608 -> node_93825066175424 [label="0 -> 0"] [color=red];
+    node_93825051586240[label="reshape:Unsqueeze_15620:\ntype: reshape\nprocessing number: 22\n color:none\n optimized out\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x128x1:nopad
+preferred_in_fmt:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825051586240 -> node_93825065851872 [label="0 -> 1"] [color=red];
+    node_93825061003280[label="reshape:Unsqueeze_15629:\ntype: reshape\nprocessing number: 23\n color:none\n optimized out\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x128x1:nopad
+preferred_in_fmt:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825061003280 -> node_93825065854080 [label="0 -> 1"] [color=red];
+    node_93825066059664[label="multiply:Multiply_15619:\ntype: eltwise\nprocessing number: 24\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x128x128:nopad
+
+"];
+    node_93825066059664 -> node_93825065851872 [label="0 -> 0"] [color=red];
+    node_93825066059664 -> node_93825065852976 [label="0 -> 2"] [color=red];
+    node_93825065851872[label="matmul:MatMul_15621:\ntype: gemm\nprocessing number: 25\n color:none\n Selected kernel: none / onednn
+layout_info: 
+0: f16:bfyx:2x128x1:nopad
+preferred_in_fmt:bfyx:bfyx:any
+preferred_out_fmt:bfyx
+"];
+    node_93825065851872 -> node_93825051583360 [label="0 -> 0"] [color=red];
+    node_93825051583360[label="reshape:Squeeze_15622:\ntype: reshape\nprocessing number: 26\n color:none\n optimized out\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x128:nopad
+preferred_in_fmt:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825051583360 -> node_93825066175424 [label="0 -> 1"] [color=red];
+    node_93825066175424[label="add:Subtract_15623:\ntype: eltwise\nprocessing number: 27\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x128:nopad
+
+"];
+    node_93825066175424 -> node_93825051587344 [label="0 -> 0"] [color=red];
+    node_93825051587344[label="reshape:Unsqueeze_15625:\ntype: reshape\nprocessing number: 28\n color:none\n optimized out\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x128x1:nopad
+preferred_in_fmt:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825051587344 -> node_93825065852976 [label="0 -> 0"] [color=red];
+    node_93825065852976[label="matmul:MatMul_15627:\ntype: gemm\nprocessing number: 29\n color:none\n Selected kernel: none / onednn
+layout_info: 
+0: f16:bfyx:2x128x128:nopad
+preferred_in_fmt:bfyx:bfyx:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825065852976 -> node_93825065854080 [label="0 -> 0"] [color=red];
+    node_93825065852976 -> node_93825058512512 [label="0 -> 0"] [color=red];
+    node_93825058512512[label="result:Result_15635:\ntype: reorder\nprocessing number: 30\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x128x128:nopad
+
+"];
+    node_93825065854080[label="matmul:MatMul_15630:\ntype: gemm\nprocessing number: 31\n color:none\n Selected kernel: none / onednn
+layout_info: 
+0: f16:bfyx:2x128x1:nopad
+preferred_in_fmt:bfyx:bfyx:any
+preferred_out_fmt:bfyx
+"];
+    node_93825065854080 -> node_93825061004384 [label="0 -> 0"] [color=red];
+    node_93825061004384[label="reshape:Unsqueeze_15633:\ntype: reshape\nprocessing number: 32\n color:none\n optimized out\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x1x128:nopad
+preferred_in_fmt:bfyx
+preferred_out_fmt:bfyx
+"];
+    node_93825061004384 -> node_93825058517584 [label="0 -> 0"] [color=red];
+    node_93825058517584[label="result:Result_15636:\ntype: reorder\nprocessing number: 33\n color:none\n Selected kernel: none / ocl
+layout_info: 
+0: f16:bfyx:2x1x128:nopad
+
+"];
+}

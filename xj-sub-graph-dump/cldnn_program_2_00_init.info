@@ -1,0 +1,174 @@
+
+{
+    implementation : null,
+    ptr : node_93825055124352,
+    id : constant:blk.0.ssm_ba.weight_postponed_compression,
+    optimized : false,
+    type : input_layout,
+    valid output layout : false,
+    output layouts : 
+    {
+        0 : f32:bfyx::nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825058507296,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058507296,
+    id : convert:blk.0.ssm_ba.weight,
+    optimized : false,
+    type : reorder,
+    valid output layout : false,
+    output layouts : 
+    {
+        0 : f32:bfyx::nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : constant:blk.0.ssm_ba.weight_postponed_compression,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : true,
+    preferred impl : any,
+    dependencies : 93825055124352(0),
+    users : null,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825055123312,
+    id : constant:blk.0.attn_qkv.weight_postponed_compression,
+    optimized : false,
+    type : input_layout,
+    valid output layout : false,
+    output layouts : 
+    {
+        0 : f32:bfyx::nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825058514160,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058514160,
+    id : convert:blk.0.attn_qkv.weight,
+    optimized : false,
+    type : reorder,
+    valid output layout : false,
+    output layouts : 
+    {
+        0 : f32:bfyx::nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : constant:blk.0.attn_qkv.weight_postponed_compression,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : true,
+    preferred impl : any,
+    dependencies : 93825055123312(0),
+    users : null,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825052747808,
+    id : constant:Reshape_163,
+    optimized : false,
+    type : input_layout,
+    valid output layout : false,
+    output layouts : 
+    {
+        0 : f32:bfyx::nopad,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : false,
+    preferred impl : any,
+    dependencies : null,
+    users : 93825058509056,
+}
+
+
+
+{
+    implementation : null,
+    ptr : node_93825058509056,
+    id : constant:Reshape_163_weights_reorder_0,
+    optimized : false,
+    type : reorder,
+    valid output layout : false,
+    output layouts : 
+    {
+        0 : f32:bfyx::nopad,
+    }
+    reorder info : 
+    {
+        input mem type : buffer,
+        mean : input_info(pid:,idx:0),
+        input id : constant:Reshape_163,
+    }
+    dependant_shape_of_nodes_ids : ,
+    fused primitives : 
+    {
+    }
+    constant : false,
+    in_shape_of_subgraph : 0,
+    in data flow : false,
+    output : true,
+    preferred impl : any,
+    dependencies : 93825052747808(0),
+    users : null,
+}
+
+

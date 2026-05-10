@@ -1,0 +1,425 @@
+digraph cldnn_program {
+    node_93825061195552[label="parameter:state_predelta-0#46:\ntype: input_layout\nprocessing number: 1\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x2x128x128:nopad
+
+"];
+    node_93825061195552 -> node_93825066108672 [label="0 -> 0"] [color=red];
+    node_93825061194416[label="parameter:q_conv_predelta-0#30:\ntype: input_layout\nprocessing number: 2\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x64x2x?:nopad
+
+"];
+    node_93825061194416 -> node_93825066107008 [label="0 -> 0"] [color=red];
+    node_93825061193280[label="parameter:model.embed_tokens#0:\ntype: input_layout\nprocessing number: 3\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x1x?x256:nopad
+
+"];
+    node_93825061193280 -> node_93825066105344 [label="0 -> 0"] [color=red];
+    node_93825061192144[label="parameter:k_conv_predelta-0#32:\ntype: input_layout\nprocessing number: 4\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x64x2x?:nopad
+
+"];
+    node_93825061192144 -> node_93825066103680 [label="0 -> 0"] [color=red];
+    node_93825061188848[label="parameter:gate-0 (reshaped)#41:\ntype: input_layout\nprocessing number: 5\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x?x2x1:nopad
+
+"];
+    node_93825061188848 -> node_93825066102016 [label="0 -> 0"] [color=red];
+    node_93825061187744[label="parameter:conv_output_silu-0#28:\ntype: input_layout\nprocessing number: 6\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x1x64x?:nopad
+
+"];
+    node_93825061187744 -> node_93825051464320 [label="0 -> 0"] [color=red];
+    node_93825061183424[label="parameter:attn_norm-0#2:\ntype: input_layout\nprocessing number: 7\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x1x?x256:nopad
+
+"];
+    node_93825061183424 -> node_93825051462656 [label="0 -> 0"] [color=red];
+    node_93825061182720[label="parameter: (reshaped)#45:\ntype: input_layout\nprocessing number: 8\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x?x2x1:nopad
+
+"];
+    node_93825061182720 -> node_93825066088608 [label="0 -> 0"] [color=red];
+    node_93825061181376[label="loop:Loop_15639_numIteration:\ntype: mutable_data\nprocessing number: 9\n color:none\n Selected kernel: none / any
+layout_info: 
+0: i32:bfyx:1:nopad
+
+"];
+    node_93825061181376 -> node_93825054092224 [label="0 -> 0"] [color=red];
+    node_93825066117408[label="loop:Loop_15639_firstIter:\ntype: mutable_data\nprocessing number: 10\n color:none\n Selected kernel: none / any
+layout_info: 
+0: i32:bfyx:1:nopad
+
+"];
+    node_93825066117408 -> node_93825054092224 [label="0 -> 1"] [color=red];
+    node_93825051468032[label="constant:blk.0.ssm_out.weight_postponed_compression:\ntype: data\nprocessing number: 11\n color:none
+layout_info: 
+0: f32:bfyx:256x256:nopad
+
+", shape=box];
+    node_93825051468032 -> node_93825066113616 [label="0 -> 0"];
+    node_93825051455536[label="constant:blk.0.ssm_norm.weight:\ntype: data\nprocessing number: 12\n color:none
+layout_info: 
+0: f16:bfyx:1x128:nopad
+
+", shape=box];
+    node_93825051455536 -> node_93825055506048 [label="0 -> 1"];
+    node_93825061228016[label="constant:blk.0.post_attention_norm.weight:\ntype: data\nprocessing number: 13\n color:none
+layout_info: 
+0: f16:bfyx:1x256:nopad
+
+", shape=box];
+    node_93825061228016 -> node_93825055507136 [label="0 -> 1"];
+    node_93825061227008[label="constant:blk.0.attn_gate.weight_postponed_compression:\ntype: data\nprocessing number: 14\n color:none
+layout_info: 
+0: f32:bfyx:256x256:nopad
+
+", shape=box];
+    node_93825061227008 -> node_93825066111968 [label="0 -> 0"];
+    node_93825066389152[label="constant:Constant_19473:\ntype: data\nprocessing number: 15\n color:none
+layout_info: 
+0: i32:bfyx:2:nopad
+
+", shape=box];
+    node_93825066389152 -> node_93825055517360 [label="0 -> 2"];
+    node_93825066389152 -> node_93825055518496 [label="0 -> 2"];
+    node_93825066388624[label="constant:Constant_19472:\ntype: data\nprocessing number: 16\n color:none
+layout_info: 
+0: i32:bfyx::nopad
+
+", shape=box];
+    node_93825066388624 -> node_93825055517360 [label="0 -> 1"];
+    node_93825066388624 -> node_93825055518496 [label="0 -> 1"];
+    node_93825064589888[label="constant:Constant_17666:\ntype: data\nprocessing number: 17\n color:none
+layout_info: 
+0: i32:bfyx:3:nopad
+
+", shape=box];
+    node_93825064589888 -> node_93825055508272 [label="0 -> 3"];
+    node_93825064589360[label="constant:Constant_17663:\ntype: data\nprocessing number: 18\n color:none
+layout_info: 
+0: i32:bfyx:3:nopad
+
+", shape=box];
+    node_93825064589360 -> node_93825055508272 [label="0 -> 2"];
+    node_93825064760112[label="constant:Constant_17660:\ntype: data\nprocessing number: 19\n color:none
+layout_info: 
+0: i32:bfyx:3:nopad
+
+", shape=box];
+    node_93825064760112 -> node_93825055508272 [label="0 -> 1"];
+    node_93825061469584[label="constant:Constant_15638:\ntype: data\nprocessing number: 20\n color:none
+layout_info: 
+0: u8:bfyx:1:nopad
+
+", shape=box];
+    node_93825061469584 -> node_93825054092224 [label="0 -> 3"];
+    node_93825059940912[label="constant:Constant_15637:\ntype: data\nprocessing number: 21\n color:none
+layout_info: 
+0: i32:bfyx:1:nopad
+
+", shape=box];
+    node_93825059940912 -> node_93825054092224 [label="0 -> 2"];
+    node_93825066108672[label="convert:Convert_16942:\ntype: reorder\nprocessing number: 22\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x2x128x128:nopad
+
+"];
+    node_93825066108672 -> node_93825055492016 [label="0 -> 0"] [color=red];
+    node_93825066107008[label="convert:Convert_16941:\ntype: reorder\nprocessing number: 23\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x64x2x?:nopad
+
+"];
+    node_93825066107008 -> node_93825055510544 [label="0 -> 0"] [color=red];
+    node_93825066105344[label="convert:Convert_16940:\ntype: reorder\nprocessing number: 24\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x1x?x256:nopad
+
+"];
+    node_93825066105344 -> node_93825051585136 [label="0 -> 1"] [color=red];
+    node_93825066103680[label="convert:Convert_16939:\ntype: reorder\nprocessing number: 25\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x64x2x?:nopad
+
+"];
+    node_93825066103680 -> node_93825055511680 [label="0 -> 0"] [color=red];
+    node_93825066102016[label="convert:Convert_16938:\ntype: reorder\nprocessing number: 26\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x?x2x1:nopad
+
+"];
+    node_93825066102016 -> node_93825055513952 [label="0 -> 0"] [color=red];
+    node_93825051464320[label="convert:Convert_16937:\ntype: reorder\nprocessing number: 27\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x1x64x?:nopad
+
+"];
+    node_93825051464320 -> node_93825061197888 [label="0 -> 0"] [color=red];
+    node_93825051462656[label="convert:Convert_16936:\ntype: reorder\nprocessing number: 28\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x1x?x256:nopad
+
+"];
+    node_93825051462656 -> node_93825066396016 [label="0 -> 0"] [color=red];
+    node_93825066088608[label="convert:Convert_16935:\ntype: reorder\nprocessing number: 29\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x?x2x1:nopad
+
+"];
+    node_93825066088608 -> node_93825055515088 [label="0 -> 0"] [color=red];
+    node_93825066113616[label="convert:blk.0.ssm_out.weight:\ntype: reorder\nprocessing number: 30\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:256x256:nopad
+
+", shape=box];
+    node_93825066113616 -> node_93825051343744 [label="0 -> 1"];
+    node_93825066111968[label="convert:blk.0.attn_gate.weight:\ntype: reorder\nprocessing number: 31\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:256x256:nopad
+
+", shape=box];
+    node_93825066111968 -> node_93825066396016 [label="0 -> 1"];
+    node_93825055492016[label="reshape:Reshape_15597:\ntype: reshape\nprocessing number: 32\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:2x128x128:nopad
+
+"];
+    node_93825055492016 -> node_93825054092224 [label="0 -> 4"] [color=red];
+    node_93825055510544[label="transpose:Transpose_15581:\ntype: permute\nprocessing number: 33\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x2x64x?:nopad
+
+"];
+    node_93825055510544 -> node_93825061199024 [label="0 -> 0"] [color=red];
+    node_93825055511680[label="transpose:Transpose_15582:\ntype: permute\nprocessing number: 34\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x2x64x?:nopad
+
+"];
+    node_93825055511680 -> node_93825061200128 [label="0 -> 0"] [color=red];
+    node_93825055513952[label="transpose:Transpose_15584:\ntype: permute\nprocessing number: 35\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x2x?x1:nopad
+
+"];
+    node_93825055513952 -> node_93825061202336 [label="0 -> 0"] [color=red];
+    node_93825061197888[label="reshape:Reshape_15570:\ntype: reshape\nprocessing number: 36\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x64x768:nopad
+
+"];
+    node_93825061197888 -> node_93825055508272 [label="0 -> 0"] [color=red];
+    node_93825055515088[label="transpose:Transpose_15585:\ntype: permute\nprocessing number: 37\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x2x?x1:nopad
+
+"];
+    node_93825055515088 -> node_93825055490912 [label="0 -> 0"] [color=red];
+    node_93825066396016[label="fullyconnected:MatMul_15683_z-0#54:\ntype: fully_connected\nprocessing number: 38\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x1x?x256:nopad
+
+"];
+    node_93825066396016 -> node_93825055496432 [label="0 -> 0"] [color=red];
+    node_93825061199024[label="reshape:Reshape_15587:\ntype: reshape\nprocessing number: 39\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:2x64x128:nopad
+
+"];
+    node_93825061199024 -> node_93825054092224 [label="0 -> 5"] [color=red];
+    node_93825061200128[label="reshape:Reshape_15589:\ntype: reshape\nprocessing number: 40\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:2x64x128:nopad
+
+"];
+    node_93825061200128 -> node_93825054092224 [label="0 -> 6"] [color=red];
+    node_93825061202336[label="reshape:Reshape_15593:\ntype: reshape\nprocessing number: 41\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:2x64x1:nopad
+
+"];
+    node_93825061202336 -> node_93825054092224 [label="0 -> 8"] [color=red];
+    node_93825055490912[label="reshape:Reshape_15595:\ntype: reshape\nprocessing number: 42\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:2x64x1:nopad
+
+"];
+    node_93825055490912 -> node_93825054092224 [label="0 -> 9"] [color=red];
+    node_93825055496432[label="reshape:Reshape_15685_z-0 (reshaped)#55:\ntype: reshape\nprocessing number: 43\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x?x2x128:nopad
+
+"];
+    node_93825055496432 -> node_93825055509408 [label="0 -> 0"] [color=red];
+    node_93825055508272[label="stridedslice:Slice_15575:\ntype: strided_slice\nprocessing number: 44\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x64x256:nopad
+
+"];
+    node_93825055508272 -> node_93825055499808 [label="0 -> 0"] [color=red];
+    node_93825055509408[label="swish:Multiply_15687_node_56#56:\ntype: activation\nprocessing number: 45\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x?x2x128:nopad
+
+"];
+    node_93825055509408 -> node_93825066066048 [label="0 -> 1"] [color=red];
+    node_93825055499808[label="reshape:v_conv_predelta-0#33:\ntype: reshape\nprocessing number: 46\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x64x2x128:nopad
+
+"];
+    node_93825055499808 -> node_93825055512816 [label="0 -> 0"] [color=red];
+    node_93825055512816[label="transpose:Transpose_15583:\ntype: permute\nprocessing number: 47\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x2x64x128:nopad
+
+"];
+    node_93825055512816 -> node_93825061201232 [label="0 -> 0"] [color=red];
+    node_93825061201232[label="reshape:Reshape_15591:\ntype: reshape\nprocessing number: 48\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:2x64x128:nopad
+
+"];
+    node_93825061201232 -> node_93825054092224 [label="0 -> 7"] [color=red];
+    node_93825054092224[label="loop:Loop_15639:\ntype: loop\nprocessing number: 49\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:2x128x128:nopad
+1: f16:bfyx:2x64x128:nopad
+
+"];
+    node_93825054092224 -> node_93825055493120 [label="1 -> 0"] [color=red];
+    node_93825054092224 -> node_93825055495328 [label="0 -> 0"] [color=red];
+    node_93825055495328[label="reshape:Reshape_15647:\ntype: reshape\nprocessing number: 50\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:32768:nopad
+
+"];
+    node_93825055495328 -> node_93825061922992 [label="0 -> 1"] [color=red];
+    node_93825055493120[label="reshape:Reshape_15641:\ntype: reshape\nprocessing number: 51\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x2x64x128:nopad
+
+"];
+    node_93825055493120 -> node_93825055516224 [label="0 -> 0"] [color=red];
+    node_93825055516224[label="transpose:Transpose_15642:\ntype: permute\nprocessing number: 52\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x64x2x128:nopad
+
+"];
+    node_93825055516224 -> node_93825055494224 [label="0 -> 0"] [color=red];
+    node_93825055494224[label="reshape:Reshape_15644:\ntype: reshape\nprocessing number: 53\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:16384:nopad
+
+"];
+    node_93825055494224 -> node_93825061922992 [label="0 -> 0"] [color=red];
+    node_93825061922992[label="concat:Concat_15648:\ntype: concatenation\nprocessing number: 54\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:49152:nopad
+
+"];
+    node_93825061922992 -> node_93825055517360 [label="0 -> 0"] [color=red];
+    node_93825061922992 -> node_93825055518496 [label="0 -> 0"] [color=red];
+    node_93825055518496[label="variadicsplit:VariadicSplit_19474.out1:\ntype: crop\nprocessing number: 55\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:32768:nopad
+
+"];
+    node_93825055518496 -> node_93825061196688 [label="0 -> 0"] [color=red];
+    node_93825055517360[label="variadicsplit:VariadicSplit_19474.out0:\ntype: crop\nprocessing number: 56\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:16384:nopad
+
+"];
+    node_93825055517360 -> node_93825055498672 [label="0 -> 0"] [color=red];
+    node_93825061196688[label="reshape:Convert_15662_cache_s_l0 (view) (copy of new_state-0)#50:\ntype: reshape\nprocessing number: 57\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x1x1x32768:nopad
+
+"];
+    node_93825061196688 -> node_140735005370032 [label="0 -> 0"] [color=red];
+    node_93825055498672[label="reshape:attn_output-0#51:\ntype: reshape\nprocessing number: 58\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x64x2x128:nopad
+
+"];
+    node_93825055498672 -> node_93825055506048 [label="0 -> 0"] [color=red];
+    node_140735005370032[label="convert:Convert_15662_cache_s_l0 (view) (copy of new_state-0)#50.0:\ntype: reorder\nprocessing number: 59\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x1x1x32768:nopad
+
+"];
+    node_140735005370032 -> node_93825055504336 [label="0 -> 0"] [color=red];
+    node_93825055506048[label="rms:Multiply_15682_node_53#53:\ntype: rms\nprocessing number: 60\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x64x2x128:nopad
+
+"];
+    node_93825055506048 -> node_93825066066048 [label="0 -> 0"] [color=red];
+    node_93825055504336[label="result:cache_s_l0 (view) (copy of new_state-0)#50:\ntype: reorder\nprocessing number: 61\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x1x1x32768:nopad
+
+"];
+    node_93825066066048[label="multiply:Multiply_15688_node_57#57:\ntype: eltwise\nprocessing number: 62\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x64x2x128:nopad
+
+"];
+    node_93825066066048 -> node_93825055497536 [label="0 -> 0"] [color=red];
+    node_93825055497536[label="reshape:Reshape_15690_final_output-0#58:\ntype: reshape\nprocessing number: 63\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x1x64x256:nopad
+
+"];
+    node_93825055497536 -> node_93825051343744 [label="0 -> 0"] [color=red];
+    node_93825051343744[label="fullyconnected:MatMul_15691_linear_attn_out-0#59:\ntype: fully_connected\nprocessing number: 64\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x1x64x256:nopad
+
+"];
+    node_93825051343744 -> node_93825051585136 [label="0 -> 0"] [color=red];
+    node_93825051585136[label="add:Add_15692_attn_residual-0#61:\ntype: eltwise\nprocessing number: 65\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x1x64x256:nopad
+
+"];
+    node_93825051585136 -> node_93825058509056 [label="0 -> 0"] [color=red];
+    node_93825051585136 -> node_93825055507136 [label="0 -> 0"] [color=red];
+    node_93825055507136[label="rms:Multiply_15703_attn_post_norm-0#63:\ntype: rms\nprocessing number: 66\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f16:bfyx:1x1x64x256:nopad
+
+"];
+    node_93825055507136 -> node_93825066110336 [label="0 -> 0"] [color=red];
+    node_93825058509056[label="convert:Add_15692_attn_residual-0#61.0:\ntype: reorder\nprocessing number: 67\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x1x64x256:nopad
+
+"];
+    node_93825058509056 -> node_93825055502640 [label="0 -> 0"] [color=red];
+    node_93825066110336[label="convert:Multiply_15703_attn_post_norm-0#63.0:\ntype: reorder\nprocessing number: 68\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x1x64x256:nopad
+
+"];
+    node_93825066110336 -> node_93825055500944 [label="0 -> 0"] [color=red];
+    node_93825055502640[label="result:attn_residual-0#61:\ntype: reorder\nprocessing number: 69\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x1x64x256:nopad
+
+"];
+    node_93825055500944[label="result:attn_post_norm-0#63:\ntype: reorder\nprocessing number: 70\n color:none\n Selected kernel: none / any
+layout_info: 
+0: f32:bfyx:1x1x64x256:nopad
+
+"];
+}

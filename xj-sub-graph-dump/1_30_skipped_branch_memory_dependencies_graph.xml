@@ -1,0 +1,134 @@
+<?xml version="1.0"?>
+<net name="runtime_gpu_graph" version="11">
+	<layers>
+		<layer id="0" name="linear_attn_mixed_ba-0 (reshaped)#35" type="Input">
+			<data shape="1,?,2,2" element_type="f32" execOrder="0" execTimeMcs="not_executed" originalLayersNames="linear_attn_mixed_ba-0 (reshaped)#35" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="wait_for_events__f32" runtimePrecision="f32" />
+			<output>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="1" name="a_softplus-0#39" type="Input">
+			<data shape="1,1,?,2" element_type="f32" execOrder="1" execTimeMcs="not_executed" originalLayersNames="a_softplus-0#39" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="wait_for_events__f32" runtimePrecision="f32" />
+			<output>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="2" name="Convert_10677" type="Reorder">
+			<data execOrder="5" execTimeMcs="not_executed" originalLayersNames="Convert_10677" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>2</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="3" name="b-0#42" type="StridedSlice">
+			<data execOrder="6" execTimeMcs="not_executed" originalLayersNames="b-0#42" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="strided_slice_ref__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>2</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="4" name="Reshape_9840_b-0 (cont)#43" type="Reshape">
+			<data execOrder="7" execTimeMcs="not_executed" originalLayersNames="Reshape_9840_b-0 (cont)#43" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="5" name="b-0 (cont)#43" type="Reorder">
+			<data execOrder="8" execTimeMcs="not_executed" originalLayersNames="b-0 (cont)#43" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="6" name="a_softplus-0#39_result" type="Result">
+			<data execOrder="1" execTimeMcs="not_executed" originalLayersNames="a_softplus-0#39" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="wait_for_events__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+				</port>
+			</input>
+		</layer>
+		<layer id="7" name="b-0 (cont)#43_result" type="Result">
+			<data execOrder="8" execTimeMcs="not_executed" originalLayersNames="b-0 (cont)#43" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+		</layer>
+	</layers>
+	<edges>
+		<edge from-layer="0" from-port="0" to-layer="2" to-port="0" />
+		<edge from-layer="1" from-port="0" to-layer="6" to-port="0" />
+		<edge from-layer="2" from-port="1" to-layer="3" to-port="0" />
+		<edge from-layer="3" from-port="1" to-layer="4" to-port="0" />
+		<edge from-layer="4" from-port="1" to-layer="5" to-port="0" />
+		<edge from-layer="5" from-port="1" to-layer="7" to-port="0" />
+	</edges>
+	<rt_info />
+</net>

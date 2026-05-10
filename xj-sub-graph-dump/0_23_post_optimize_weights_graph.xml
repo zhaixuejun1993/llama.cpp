@@ -1,0 +1,1589 @@
+<?xml version="1.0"?>
+<net name="runtime_gpu_graph" version="11">
+	<layers>
+		<layer id="0" name="leaf_5" type="Input">
+			<data shape="1,1,1,1" element_type="i32" execOrder="0" execTimeMcs="not_executed" originalLayersNames="leaf_5" outputLayouts="bfyx" outputPrecisions="i32" primitiveType="wait_for_events__i32" runtimePrecision="i32" />
+			<output>
+				<port id="0" precision="I32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="1" name="inp_tokens" type="Input">
+			<data shape="1,1,1,?" element_type="i32" execOrder="1" execTimeMcs="not_executed" originalLayersNames="inp_tokens" outputLayouts="bfyx" outputPrecisions="i32" primitiveType="wait_for_events__i32" runtimePrecision="i32" />
+			<output>
+				<port id="0" precision="I32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="2" name="cache_s_l0" type="Input">
+			<data shape="1,1,?,32768" element_type="f32" execOrder="2" execTimeMcs="not_executed" originalLayersNames="cache_s_l0" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="wait_for_events__f32" runtimePrecision="f32" />
+			<output>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="3" name="cache_r_l0" type="Input">
+			<data shape="1,1,?,2304" element_type="f32" execOrder="3" execTimeMcs="not_executed" originalLayersNames="cache_r_l0" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="wait_for_events__f32" runtimePrecision="f32" />
+			<output>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="4" name="Convert_1405" type="Reorder">
+			<data execOrder="25" execTimeMcs="not_executed" originalLayersNames="Convert_1405" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+				<port id="2" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="5" name="Squeeze_95" type="Reshape">
+			<data execOrder="29" execTimeMcs="not_executed" originalLayersNames="Squeeze_95" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+				<port id="2" precision="FP16">
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="6" name="Squeeze_93" type="Reshape">
+			<data execOrder="21" execTimeMcs="not_executed" originalLayersNames="Squeeze_93" outputLayouts="bfyx" outputPrecisions="i32" primitiveType="undef" runtimePrecision="i32" />
+			<input>
+				<port id="0" precision="I32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="I32">
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+				<port id="2" precision="I32">
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="7" name="Gather_97" type="Gather">
+			<data execOrder="35" execTimeMcs="not_executed" originalLayersNames="Gather_97" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="gather_ref__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+				<port id="1" precision="I32">
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>2304</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="8" name="Reshape_119_conv_states_reshaped-0#12" type="Reshape">
+			<data execOrder="39" execTimeMcs="not_executed" originalLayersNames="Reshape_119_conv_states_reshaped-0#12" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>2304</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>3</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="9" name="Squeeze_74" type="Reshape">
+			<data execOrder="23" execTimeMcs="not_executed" originalLayersNames="Squeeze_74" outputLayouts="bfyx" outputPrecisions="i32" primitiveType="undef" runtimePrecision="i32" />
+			<input>
+				<port id="0" precision="I32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="I32">
+					<dim>1</dim>
+					<dim>-1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="10" name="Gather_76" type="Gather">
+			<data execOrder="30" execTimeMcs="not_executed" originalLayersNames="Gather_76" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="gather_ref__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="I32">
+					<dim>1</dim>
+					<dim>-1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="11" name="Unsqueeze_78_model.embed_tokens#0" type="Reshape">
+			<data execOrder="36" execTimeMcs="not_executed" originalLayersNames="Unsqueeze_78_model.embed_tokens#0" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+				<port id="2" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="12" name="Multiply_89_attn_norm-0#2" type="rms">
+			<data execOrder="40" execTimeMcs="not_executed" originalLayersNames="Multiply_89_attn_norm-0#2" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="rms_gpu_bfyx_opt__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+				<port id="2" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+				<port id="3" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="13" name="blk.0.attn_qkv.weight" type="Reorder">
+			<data execOrder="27" execTimeMcs="not_executed" originalLayersNames="blk.0.attn_qkv.weight" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<output>
+				<port id="0" precision="FP16">
+					<dim>768</dim>
+					<dim>256</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="14" name="MatMul_120_node_13#13" type="FullyConnected">
+			<data execOrder="47" execTimeMcs="not_executed" originalLayersNames="MatMul_120_node_13#13" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+				<port id="1" precision="FP16">
+					<dim>768</dim>
+					<dim>256</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="15" name="Transpose_122_qkv_mixed_transposed-0#15" type="Permute">
+			<data execOrder="52" execTimeMcs="not_executed" originalLayersNames="Transpose_122_qkv_mixed_transposed-0#15" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="permute_ref__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>-1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="16" name="Concat_123_conv_input-0#16" type="Concat">
+			<data execOrder="54" execTimeMcs="not_executed" originalLayersNames="Concat_123_conv_input-0#16" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="concatenation_gpu_simple_ref__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>3</dim>
+				</port>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>-1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>-1</dim>
+				</port>
+				<port id="3" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>-1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="17" name="_reshape_input_reshape:Reshape_161_0_reorder_0_reshape:Reshape_161" type="Reorder">
+			<data execOrder="55" execTimeMcs="not_executed" originalLayersNames="" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="reorder_data__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>-1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>-1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="18" name="Reshape_161" type="Reshape">
+			<data execOrder="59" execTimeMcs="not_executed" originalLayersNames="Reshape_161" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>-1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>67</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="19" name="Reshape_161_0_reorder_0" type="Reorder">
+			<data execOrder="60" execTimeMcs="not_executed" originalLayersNames="" outputLayouts="b_fs_yx_fsv16" outputPrecisions="f16" primitiveType="jit:ir__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>67</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>67</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="20" name="Reshape_163_weights_reorder_0" type="Reorder">
+			<data execOrder="9" execTimeMcs="not_executed" originalLayersNames="" outputLayouts="custom" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<output>
+				<port id="0" precision="FP16">
+					<dim>768</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>4</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="21" name="GroupConvolution_164" type="Convolution">
+			<data execOrder="63" execTimeMcs="not_executed" originalLayersNames="GroupConvolution_164" outputLayouts="b_fs_yx_fsv16" outputPrecisions="f16" primitiveType="jit:ir__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>67</dim>
+				</port>
+				<port id="1" precision="FP16">
+					<dim>768</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>4</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP16">
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="22" name="Convert_3839" type="Reorder">
+			<data execOrder="66" execTimeMcs="not_executed" originalLayersNames="Convert_3839" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data_fast_b1__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>64</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="23" name="Transpose_166_decompressed_to_f32" type="Permute">
+			<data execOrder="67" execTimeMcs="not_executed" originalLayersNames="Transpose_166_decompressed_to_f32" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="permute_f_y_axes__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>64</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="24" name="Reshape_168_conv_output_raw-0#27" type="Reshape">
+			<data execOrder="70" execTimeMcs="not_executed" originalLayersNames="Reshape_168_conv_output_raw-0#27" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="undef" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="25" name="Multiply_170_conv_output_silu-0#28" type="Activation">
+			<data execOrder="71" execTimeMcs="not_executed" originalLayersNames="Multiply_170_conv_output_silu-0#28" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="activation_opt__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="26" name="Reshape_188" type="Reshape">
+			<data execOrder="72" execTimeMcs="not_executed" originalLayersNames="Reshape_188" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="undef" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>768</dim>
+				</port>
+				<port id="2" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="27" name="VariadicSplit_3838.out0" type="Crop">
+			<data execOrder="74" execTimeMcs="not_executed" originalLayersNames="VariadicSplit_3838" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="generic_eltwise_ref__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>256</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="28" name="q_conv-0#29" type="Reshape">
+			<data execOrder="76" execTimeMcs="not_executed" originalLayersNames="q_conv-0#29" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="undef" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>256</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+				<port id="2" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+				<port id="3" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="29" name="Multiply_180" type="Eltwise">
+			<data execOrder="78" execTimeMcs="not_executed" originalLayersNames="Multiply_180" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="eltwise_simple_vload8__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="30" name="ReduceSum_182" type="Reduce">
+			<data execOrder="80" execTimeMcs="not_executed" originalLayersNames="ReduceSum_182,Sqrt_183" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reduce_ref__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="31" name="Maximum_185" type="Eltwise">
+			<data execOrder="82" execTimeMcs="not_executed" originalLayersNames="Maximum_185,Power_4596" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="generic_eltwise_ref__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="32" name="Divide_186_q_conv_predelta-0#30" type="Eltwise">
+			<data execOrder="84" execTimeMcs="not_executed" originalLayersNames="" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="generic_eltwise_ref__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="33" name="q_conv_predelta-0#30" type="Reorder">
+			<data execOrder="86" execTimeMcs="not_executed" originalLayersNames="Divide_186_q_conv_predelta-0#30" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data_fast_b1__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="34" name="VariadicSplit_3838.out1" type="Crop">
+			<data execOrder="73" execTimeMcs="not_executed" originalLayersNames="VariadicSplit_3838" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="generic_eltwise_ref__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>256</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="35" name="k_conv-0#31" type="Reshape">
+			<data execOrder="75" execTimeMcs="not_executed" originalLayersNames="k_conv-0#31" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="undef" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>256</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+				<port id="2" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+				<port id="3" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="36" name="Multiply_196" type="Eltwise">
+			<data execOrder="77" execTimeMcs="not_executed" originalLayersNames="Multiply_196" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="eltwise_simple_vload8__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="37" name="ReduceSum_198" type="Reduce">
+			<data execOrder="79" execTimeMcs="not_executed" originalLayersNames="ReduceSum_198,Sqrt_199" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reduce_ref__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="38" name="Maximum_201" type="Eltwise">
+			<data execOrder="81" execTimeMcs="not_executed" originalLayersNames="Maximum_201,Power_4593" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="generic_eltwise_ref__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="39" name="Divide_202_k_conv_predelta-0#32" type="Eltwise">
+			<data execOrder="83" execTimeMcs="not_executed" originalLayersNames="" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="generic_eltwise_ref__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="40" name="k_conv_predelta-0#32" type="Reorder">
+			<data execOrder="85" execTimeMcs="not_executed" originalLayersNames="Divide_202_k_conv_predelta-0#32" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data_fast_b1__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="41" name="blk.0.ssm_ba.weight" type="Reorder">
+			<data execOrder="26" execTimeMcs="not_executed" originalLayersNames="blk.0.ssm_ba.weight" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<output>
+				<port id="0" precision="FP16">
+					<dim>4</dim>
+					<dim>256</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="42" name="MatMul_203_linear_attn_mixed_ba-0#34" type="FullyConnected">
+			<data execOrder="46" execTimeMcs="not_executed" originalLayersNames="MatMul_203_linear_attn_mixed_ba-0#34" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+				<port id="1" precision="FP16">
+					<dim>4</dim>
+					<dim>256</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>4</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="43" name="Reshape_205_linear_attn_mixed_ba-0 (reshaped)#35" type="Reshape">
+			<data execOrder="51" execTimeMcs="not_executed" originalLayersNames="Reshape_205_linear_attn_mixed_ba-0 (reshaped)#35" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>4</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="44" name="a-0#36" type="StridedSlice">
+			<data execOrder="56" execTimeMcs="not_executed" originalLayersNames="a-0#36" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="strided_slice_ref__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>2</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="45" name="Reshape_212_a-0 (cont)#37" type="Reshape">
+			<data execOrder="62" execTimeMcs="not_executed" originalLayersNames="Reshape_212_a-0 (cont)#37" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="46" name="Add_213_node_38#38" type="Eltwise">
+			<data execOrder="65" execTimeMcs="not_executed" originalLayersNames="Add_213_node_38#38" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="generic_eltwise_ref__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="47" name="node_38#38" type="Reorder">
+			<data execOrder="69" execTimeMcs="not_executed" originalLayersNames="node_38#38" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="48" name="last_conv_states-0#17" type="StridedSlice">
+			<data execOrder="61" execTimeMcs="not_executed" originalLayersNames="last_conv_states-0#17" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="strided_slice_ref__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>-1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>-1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="49" name="Convert_131_state_update_target-0 (copy of last_conv_states-0)#19" type="Reshape">
+			<data execOrder="64" execTimeMcs="not_executed" originalLayersNames="Convert_131_state_update_target-0 (copy of last_conv_states-0)#19" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>768</dim>
+					<dim>-1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>2304</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="50" name="state_update_target-0 (copy of last_conv_states-0)#19" type="Reorder">
+			<data execOrder="68" execTimeMcs="not_executed" originalLayersNames="state_update_target-0 (copy of last_conv_states-0)#19" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data_fast_b1__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>2304</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>2304</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="51" name="Reshape_143" type="Reshape">
+			<data execOrder="22" execTimeMcs="not_executed" originalLayersNames="Reshape_143" outputLayouts="bfyx" outputPrecisions="i32" primitiveType="undef" runtimePrecision="i32" />
+			<input>
+				<port id="0" precision="I32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="I32">
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="52" name="Slice_148" type="StridedSlice">
+			<data execOrder="33" execTimeMcs="not_executed" originalLayersNames="Slice_148" outputLayouts="bfyx" outputPrecisions="i32" primitiveType="strided_slice_ref__i32" runtimePrecision="i32" />
+			<input>
+				<port id="0" precision="I32">
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="I32">
+					<dim>0</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="53" name="Squeeze_152" type="Reshape">
+			<data execOrder="37" execTimeMcs="not_executed" originalLayersNames="Squeeze_152" outputLayouts="bfyx" outputPrecisions="i32" primitiveType="undef" runtimePrecision="i32" />
+			<input>
+				<port id="0" precision="I32">
+					<dim>0</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="I32">
+					<dim>1</dim>
+					<dim>0</dim>
+				</port>
+				<port id="2" precision="I32">
+					<dim>1</dim>
+					<dim>0</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="54" name="Gather_114" type="Gather">
+			<data execOrder="44" execTimeMcs="not_executed" originalLayersNames="Gather_114" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="gather_ref__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+				<port id="1" precision="I32">
+					<dim>1</dim>
+					<dim>0</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP16">
+					<dim>1</dim>
+					<dim>0</dim>
+					<dim>2304</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="55" name="Convert_117_cache_r_l0 (view) (copy of )#11" type="Reshape">
+			<data execOrder="49" execTimeMcs="not_executed" originalLayersNames="Convert_117_cache_r_l0 (view) (copy of )#11" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>0</dim>
+					<dim>2304</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>0</dim>
+					<dim>2304</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="56" name="cache_r_l0 (view) (copy of )#11" type="Reorder">
+			<data execOrder="58" execTimeMcs="not_executed" originalLayersNames="cache_r_l0 (view) (copy of )#11" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data_fast_b1__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>0</dim>
+					<dim>2304</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>0</dim>
+					<dim>2304</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="57" name="Convert_1406" type="Reorder">
+			<data execOrder="24" execTimeMcs="not_executed" originalLayersNames="Convert_1406" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+				<port id="2" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="58" name="Squeeze_154" type="Reshape">
+			<data execOrder="28" execTimeMcs="not_executed" originalLayersNames="Squeeze_154" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+				<port id="2" precision="FP16">
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="59" name="Gather_156" type="Gather">
+			<data execOrder="43" execTimeMcs="not_executed" originalLayersNames="Gather_156" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="gather_ref__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+				<port id="1" precision="I32">
+					<dim>1</dim>
+					<dim>0</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP16">
+					<dim>1</dim>
+					<dim>0</dim>
+					<dim>32768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="60" name="Convert_159_cache_s_l0 (view) (copy of )#26" type="Reshape">
+			<data execOrder="48" execTimeMcs="not_executed" originalLayersNames="Convert_159_cache_s_l0 (view) (copy of )#26" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>0</dim>
+					<dim>32768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>0</dim>
+					<dim>32768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="61" name="cache_s_l0 (view) (copy of )#26" type="Reorder">
+			<data execOrder="57" execTimeMcs="not_executed" originalLayersNames="cache_s_l0 (view) (copy of )#26" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data_fast_b1__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>0</dim>
+					<dim>32768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>0</dim>
+					<dim>32768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="62" name="attn_norm-0#2" type="Reorder">
+			<data execOrder="53" execTimeMcs="not_executed" originalLayersNames="attn_norm-0#2" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="63" name="Gather_139" type="Gather">
+			<data execOrder="34" execTimeMcs="not_executed" originalLayersNames="Gather_139" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="gather_ref__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+				<port id="1" precision="I32">
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>32768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="64" name="Unsqueeze_141_node_23#23" type="Reshape">
+			<data execOrder="38" execTimeMcs="not_executed" originalLayersNames="Unsqueeze_141_node_23#23" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="undef" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>32768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>32768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="65" name="node_23#23" type="Reorder">
+			<data execOrder="50" execTimeMcs="not_executed" originalLayersNames="node_23#23" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data_fast_b1__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>32768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>32768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="66" name="model.embed_tokens#0" type="Reorder">
+			<data execOrder="45" execTimeMcs="not_executed" originalLayersNames="model.embed_tokens#0" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="67" name="Multiply_133_cache_s_l0 (reshaped) (view) (view)#22" type="Eltwise">
+			<data execOrder="32" execTimeMcs="not_executed" originalLayersNames="Multiply_133_cache_s_l0 (reshaped) (view) (view)#22" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="generic_eltwise_ref__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="68" name="cache_s_l0 (reshaped) (view) (view)#22" type="Reorder">
+			<data execOrder="42" execTimeMcs="not_executed" originalLayersNames="cache_s_l0 (reshaped) (view) (view)#22" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="69" name="Multiply_91_cache_r_l0 (reshaped) (view) (view)#5" type="Eltwise">
+			<data execOrder="31" execTimeMcs="not_executed" originalLayersNames="Multiply_91_cache_r_l0 (reshaped) (view) (view)#5" outputLayouts="bfyx" outputPrecisions="f16" primitiveType="generic_eltwise_ref__f16" runtimePrecision="f16" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="70" name="cache_r_l0 (reshaped) (view) (view)#5" type="Reorder">
+			<data execOrder="41" execTimeMcs="not_executed" originalLayersNames="cache_r_l0 (reshaped) (view) (view)#5" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="71" name="cache_r_l0 (reshaped) (view) (view)#5_result" type="Result">
+			<data execOrder="41" execTimeMcs="not_executed" originalLayersNames="cache_r_l0 (reshaped) (view) (view)#5" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2304</dim>
+				</port>
+			</input>
+		</layer>
+		<layer id="72" name="cache_s_l0 (reshaped) (view) (view)#22_result" type="Result">
+			<data execOrder="42" execTimeMcs="not_executed" originalLayersNames="cache_s_l0 (reshaped) (view) (view)#22" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>32768</dim>
+				</port>
+			</input>
+		</layer>
+		<layer id="73" name="model.embed_tokens#0_result" type="Result">
+			<data execOrder="45" execTimeMcs="not_executed" originalLayersNames="model.embed_tokens#0" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+			</input>
+		</layer>
+		<layer id="74" name="node_23#23_result" type="Result">
+			<data execOrder="50" execTimeMcs="not_executed" originalLayersNames="node_23#23" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data_fast_b1__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>32768</dim>
+				</port>
+			</input>
+		</layer>
+		<layer id="75" name="attn_norm-0#2_result" type="Result">
+			<data execOrder="53" execTimeMcs="not_executed" originalLayersNames="attn_norm-0#2" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>256</dim>
+				</port>
+			</input>
+		</layer>
+		<layer id="76" name="cache_s_l0 (view) (copy of )#26_result" type="Result">
+			<data execOrder="57" execTimeMcs="not_executed" originalLayersNames="cache_s_l0 (view) (copy of )#26" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data_fast_b1__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>0</dim>
+					<dim>32768</dim>
+				</port>
+			</input>
+		</layer>
+		<layer id="77" name="cache_r_l0 (view) (copy of )#11_result" type="Result">
+			<data execOrder="58" execTimeMcs="not_executed" originalLayersNames="cache_r_l0 (view) (copy of )#11" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data_fast_b1__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>0</dim>
+					<dim>2304</dim>
+				</port>
+			</input>
+		</layer>
+		<layer id="78" name="state_update_target-0 (copy of last_conv_states-0)#19_result" type="Result">
+			<data execOrder="68" execTimeMcs="not_executed" originalLayersNames="state_update_target-0 (copy of last_conv_states-0)#19" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data_fast_b1__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>2304</dim>
+				</port>
+			</input>
+		</layer>
+		<layer id="79" name="node_38#38_result" type="Result">
+			<data execOrder="69" execTimeMcs="not_executed" originalLayersNames="node_38#38" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+					<dim>-1</dim>
+					<dim>2</dim>
+				</port>
+			</input>
+		</layer>
+		<layer id="80" name="k_conv_predelta-0#32_result" type="Result">
+			<data execOrder="85" execTimeMcs="not_executed" originalLayersNames="Divide_202_k_conv_predelta-0#32" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data_fast_b1__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</input>
+		</layer>
+		<layer id="81" name="q_conv_predelta-0#30_result" type="Result">
+			<data execOrder="86" execTimeMcs="not_executed" originalLayersNames="Divide_186_q_conv_predelta-0#30" outputLayouts="bfyx" outputPrecisions="f32" primitiveType="reorder_data_fast_b1__f32" runtimePrecision="f32" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+					<dim>2</dim>
+					<dim>128</dim>
+				</port>
+			</input>
+		</layer>
+	</layers>
+	<edges>
+		<edge from-layer="0" from-port="0" to-layer="6" to-port="0" />
+		<edge from-layer="0" from-port="0" to-layer="51" to-port="0" />
+		<edge from-layer="1" from-port="0" to-layer="9" to-port="0" />
+		<edge from-layer="2" from-port="0" to-layer="57" to-port="0" />
+		<edge from-layer="3" from-port="0" to-layer="4" to-port="0" />
+		<edge from-layer="4" from-port="1" to-layer="5" to-port="0" />
+		<edge from-layer="4" from-port="1" to-layer="69" to-port="0" />
+		<edge from-layer="5" from-port="1" to-layer="54" to-port="0" />
+		<edge from-layer="5" from-port="1" to-layer="7" to-port="0" />
+		<edge from-layer="6" from-port="1" to-layer="63" to-port="1" />
+		<edge from-layer="6" from-port="1" to-layer="7" to-port="1" />
+		<edge from-layer="7" from-port="2" to-layer="8" to-port="0" />
+		<edge from-layer="8" from-port="1" to-layer="16" to-port="0" />
+		<edge from-layer="9" from-port="1" to-layer="10" to-port="0" />
+		<edge from-layer="10" from-port="1" to-layer="11" to-port="0" />
+		<edge from-layer="11" from-port="1" to-layer="12" to-port="0" />
+		<edge from-layer="11" from-port="1" to-layer="66" to-port="0" />
+		<edge from-layer="12" from-port="1" to-layer="62" to-port="0" />
+		<edge from-layer="12" from-port="1" to-layer="42" to-port="0" />
+		<edge from-layer="12" from-port="1" to-layer="14" to-port="0" />
+		<edge from-layer="13" from-port="0" to-layer="14" to-port="1" />
+		<edge from-layer="14" from-port="2" to-layer="15" to-port="0" />
+		<edge from-layer="15" from-port="1" to-layer="16" to-port="1" />
+		<edge from-layer="16" from-port="2" to-layer="17" to-port="0" />
+		<edge from-layer="16" from-port="2" to-layer="48" to-port="0" />
+		<edge from-layer="17" from-port="1" to-layer="18" to-port="0" />
+		<edge from-layer="18" from-port="1" to-layer="19" to-port="0" />
+		<edge from-layer="19" from-port="1" to-layer="21" to-port="0" />
+		<edge from-layer="20" from-port="0" to-layer="21" to-port="1" />
+		<edge from-layer="21" from-port="2" to-layer="22" to-port="0" />
+		<edge from-layer="22" from-port="1" to-layer="23" to-port="0" />
+		<edge from-layer="23" from-port="1" to-layer="24" to-port="0" />
+		<edge from-layer="24" from-port="1" to-layer="25" to-port="0" />
+		<edge from-layer="25" from-port="1" to-layer="26" to-port="0" />
+		<edge from-layer="26" from-port="1" to-layer="34" to-port="0" />
+		<edge from-layer="26" from-port="1" to-layer="27" to-port="0" />
+		<edge from-layer="27" from-port="1" to-layer="28" to-port="0" />
+		<edge from-layer="28" from-port="1" to-layer="32" to-port="0" />
+		<edge from-layer="28" from-port="1" to-layer="29" to-port="0" />
+		<edge from-layer="28" from-port="1" to-layer="29" to-port="1" />
+		<edge from-layer="29" from-port="2" to-layer="30" to-port="0" />
+		<edge from-layer="30" from-port="1" to-layer="31" to-port="0" />
+		<edge from-layer="31" from-port="1" to-layer="32" to-port="1" />
+		<edge from-layer="32" from-port="2" to-layer="33" to-port="0" />
+		<edge from-layer="33" from-port="1" to-layer="81" to-port="0" />
+		<edge from-layer="34" from-port="1" to-layer="35" to-port="0" />
+		<edge from-layer="35" from-port="1" to-layer="36" to-port="0" />
+		<edge from-layer="35" from-port="1" to-layer="36" to-port="1" />
+		<edge from-layer="35" from-port="1" to-layer="39" to-port="0" />
+		<edge from-layer="36" from-port="2" to-layer="37" to-port="0" />
+		<edge from-layer="37" from-port="1" to-layer="38" to-port="0" />
+		<edge from-layer="38" from-port="1" to-layer="39" to-port="1" />
+		<edge from-layer="39" from-port="2" to-layer="40" to-port="0" />
+		<edge from-layer="40" from-port="1" to-layer="80" to-port="0" />
+		<edge from-layer="41" from-port="0" to-layer="42" to-port="1" />
+		<edge from-layer="42" from-port="2" to-layer="43" to-port="0" />
+		<edge from-layer="43" from-port="1" to-layer="44" to-port="0" />
+		<edge from-layer="44" from-port="1" to-layer="45" to-port="0" />
+		<edge from-layer="45" from-port="1" to-layer="46" to-port="0" />
+		<edge from-layer="46" from-port="1" to-layer="47" to-port="0" />
+		<edge from-layer="47" from-port="1" to-layer="79" to-port="0" />
+		<edge from-layer="48" from-port="1" to-layer="49" to-port="0" />
+		<edge from-layer="49" from-port="1" to-layer="50" to-port="0" />
+		<edge from-layer="50" from-port="1" to-layer="78" to-port="0" />
+		<edge from-layer="51" from-port="1" to-layer="52" to-port="0" />
+		<edge from-layer="52" from-port="1" to-layer="53" to-port="0" />
+		<edge from-layer="53" from-port="1" to-layer="59" to-port="1" />
+		<edge from-layer="53" from-port="1" to-layer="54" to-port="1" />
+		<edge from-layer="54" from-port="2" to-layer="55" to-port="0" />
+		<edge from-layer="55" from-port="1" to-layer="56" to-port="0" />
+		<edge from-layer="56" from-port="1" to-layer="77" to-port="0" />
+		<edge from-layer="57" from-port="1" to-layer="58" to-port="0" />
+		<edge from-layer="57" from-port="1" to-layer="67" to-port="0" />
+		<edge from-layer="58" from-port="1" to-layer="59" to-port="0" />
+		<edge from-layer="58" from-port="1" to-layer="63" to-port="0" />
+		<edge from-layer="59" from-port="2" to-layer="60" to-port="0" />
+		<edge from-layer="60" from-port="1" to-layer="61" to-port="0" />
+		<edge from-layer="61" from-port="1" to-layer="76" to-port="0" />
+		<edge from-layer="62" from-port="1" to-layer="75" to-port="0" />
+		<edge from-layer="63" from-port="2" to-layer="64" to-port="0" />
+		<edge from-layer="64" from-port="1" to-layer="65" to-port="0" />
+		<edge from-layer="65" from-port="1" to-layer="74" to-port="0" />
+		<edge from-layer="66" from-port="1" to-layer="73" to-port="0" />
+		<edge from-layer="67" from-port="1" to-layer="68" to-port="0" />
+		<edge from-layer="68" from-port="1" to-layer="72" to-port="0" />
+		<edge from-layer="69" from-port="1" to-layer="70" to-port="0" />
+		<edge from-layer="70" from-port="1" to-layer="71" to-port="0" />
+	</edges>
+	<rt_info />
+</net>
