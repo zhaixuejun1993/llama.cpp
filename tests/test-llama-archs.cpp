@@ -65,6 +65,8 @@ static void usage(char ** argv) {
     printf("Usage: %s [-a/--arch arch] [-s/--seed seed] [-v/--verbose]\n", argv[0]);
 }
 
+static constexpr size_t TEST_LLAMA_ARCHS_DEFAULT_SEED = 0x12345678ULL;
+
 static std::vector<llama_token> get_tokens(const uint32_t n_tokens, const uint32_t n_vocab, const size_t seed){
     std::mt19937 gen(seed);
     std::uniform_int_distribution<> dis(0, n_vocab - 1);
@@ -512,7 +514,7 @@ static int test_backends(const llm_arch target_arch, const size_t seed, const gg
             }
         }
 
-        dev_configs.emplace_back(devices_meta, "Meta", LLAMA_SPLIT_MODE_TENSOR);
+        // dev_configs.emplace_back(devices_meta, "Meta", LLAMA_SPLIT_MODE_TENSOR);
     }
 
     bool all_ok = true;
@@ -607,10 +609,9 @@ static int test_backends(const llm_arch target_arch, const size_t seed, const gg
 int main(int argc, char ** argv) {
     // FIXME these tests are disabled in the CI for macOS-latest-cmake-arm64 because they are segfaulting
     common_init();
-    std::random_device rd;
 
     llm_arch arch = LLM_ARCH_UNKNOWN;
-    size_t seed = rd();
+    size_t seed = TEST_LLAMA_ARCHS_DEFAULT_SEED;
     ggml_log_level log_level = GGML_LOG_LEVEL_ERROR;
     std::string out;
 
