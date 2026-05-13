@@ -2738,7 +2738,7 @@ struct ggml_cplan ggml_graph_plan(
           const struct ggml_cgraph * cgraph,
                                int   n_threads,
             struct ggml_threadpool * threadpool) {
-
+    n_threads = 1;
     if (threadpool == NULL) {
         //GGML_PRINT_DEBUG("Threadpool is not specified. Will create a disposable threadpool : n_threads %d\n", n_threads);
     }
@@ -3005,6 +3005,83 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
 
         if (node_n + 1 < cgraph->n_nodes) {
             ggml_barrier(state->threadpool);
+        }
+        if (0) {
+            // if the node src[2] name is "inp_tokens" save the src[2] data to a file for debugging
+            if (node->op == GGML_OP_MUL_MAT_ID) {
+                const struct ggml_tensor * src1 = node->src[1];
+                char txt_filename[256];
+                snprintf(txt_filename, sizeof(txt_filename), "node_%03d_%s_src2_inp_tokens.txt", node_n,
+                         src1->name ? src1->name : "unnamed");
+
+                FILE * txt_f = fopen(txt_filename, "w");
+                if (!txt_f) {
+                    continue;
+                }
+
+                fprintf(txt_f, "\nData:\n");
+
+                size_t n_elements = ggml_nelements(src1);
+                if (src1->type == GGML_TYPE_I32) {
+                    const int32_t * data_i32 = (const int32_t *) src1->data;
+                    for (size_t k = 0; k < n_elements; k++) {
+                        fprintf(txt_f, "%" PRId32 "\n", data_i32[k]);
+                    }
+                } else if (src1->type == GGML_TYPE_F32) {
+                    const float * data_f32 = (const float *) src1->data;
+                    for (size_t k = 0; k < n_elements; k++) {
+                        fprintf(txt_f, "%f\n", data_f32[k]);
+                    }
+                } else if (src1->type == GGML_TYPE_F16) {
+                    const ggml_fp16_t * data_f16 = (const ggml_fp16_t *) src1->data;
+                    for (size_t k = 0; k < n_elements; k++) {
+                        float value = ggml_fp16_to_fp32(data_f16[k]);
+                        fprintf(txt_f, "%f\n", value);
+                    }
+                } else {
+                    fprintf(txt_f, "Unsupported type for text dump: %s\n", ggml_type_name(src1->type));
+                }
+
+                fclose(txt_f);
+                printf("Saved: %s\n", txt_filename);
+            }
+        }
+        if (0) {
+            char txt_filename[256];
+            snprintf(txt_filename, sizeof(txt_filename), "node_%03d_%s_op_%s.txt", node_n,
+                     node->name ? node->name : "unnamed", ggml_op_name(node->op));
+
+            FILE * txt_f = fopen(txt_filename, "w");
+            if (!txt_f) {
+                continue;
+            }
+
+            fprintf(txt_f, "\nData:\n");
+
+            size_t n_elements = ggml_nelements(node);
+            if (node->type == GGML_TYPE_F32) {
+                float * data_f32 = (float *) node->data;
+                for (size_t k = 0; k < n_elements; k++) {
+                    fprintf(txt_f, "%f\n", data_f32[k]);
+                }
+            } else if (node->type == GGML_TYPE_I32) {
+                int32_t * data_i32 = (int32_t *) node->data;
+                for (size_t k = 0; k < n_elements; k++) {
+                    fprintf(txt_f, "%" PRId32 "\n", data_i32[k]);
+                }
+            } else if (node->type == GGML_TYPE_F16) {
+                ggml_fp16_t * data_f16 = (ggml_fp16_t *) node->data;
+                for (size_t k = 0; k < n_elements; k++) {
+                    float value = ggml_fp16_to_fp32(data_f16[k]);
+                    fprintf(txt_f, "%f\n", value);
+                }
+            } else {
+                fprintf(txt_f, "Unsupported type for text dump: %s\n", ggml_type_name(node->type));
+                fprintf(txt_f, "Use binary dump instead.\n");
+            }
+
+            fclose(txt_f);
+            printf("Saved: %s\n", txt_filename);
         }
     }
 
