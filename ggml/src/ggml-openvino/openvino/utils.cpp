@@ -334,6 +334,50 @@ ov::Output<ov::Node> process_view_input_new(const NodeContext & context, int inp
             return reshape_pattern;
         };
 
+        auto inherit_one_dynamic_dim = [](std::vector<int64_t> & reshape_pattern,
+                                          const ov::PartialShape & src_ov_shape,
+                                          const ov::Shape & target_ggml_shape) {
+            bool has_dynamic = false;
+            for (const auto & d : reshape_pattern) {
+                if (d == -1) {
+                    has_dynamic = true;
+                    break;
+                }
+            }
+            if (has_dynamic) {
+                return;
+            }
+
+            if (!src_ov_shape.rank().is_static()) {
+                return;
+            }
+
+            const auto rank = static_cast<size_t>(src_ov_shape.rank().get_length());
+            if (rank != reshape_pattern.size() || rank != target_ggml_shape.size()) {
+                return;
+            }
+
+            int dynamic_idx = -1;
+            for (size_t i = 0; i < rank; ++i) {
+                if (src_ov_shape[i].is_dynamic()) {
+                    if (dynamic_idx != -1) {
+                        // Keep behavior deterministic: only lift when source has exactly one dynamic axis.
+                        return;
+                    }
+                    dynamic_idx = static_cast<int>(i);
+                }
+            }
+
+            if (dynamic_idx == -1) {
+                return;
+            }
+
+            const size_t idx = static_cast<size_t>(dynamic_idx);
+            if (reshape_pattern[idx] == static_cast<int64_t>(target_ggml_shape[idx])) {
+                reshape_pattern[idx] = -1;
+            }
+        };
+
         bool same_stride = view_stride.size() == view_src_stride.size();
         if (same_stride) {
             for (size_t i = 0; i < view_stride.size(); ++i) {
@@ -389,9 +433,11 @@ ov::Output<ov::Node> process_view_input_new(const NodeContext & context, int inp
                             ov::op::v0::Constant::create(ov::element::i64, {1}, {slice_dim}));
 
                         if (view_ov_shape.is_static()) {
+                            auto reshape_pattern = build_reshape_pattern(view_ov_shape, view_ggml_shape);
+                            inherit_one_dynamic_dim(reshape_pattern, view_src_ov_shape, view_ggml_shape);
                             auto reshaped = std::make_shared<ov::op::v1::Reshape>(
                                 sliced,
-                                ov::op::v0::Constant::create(ov::element::i64, {ndims}, view_ov_shape.to_shape()),
+                                ov::op::v0::Constant::create(ov::element::i64, {reshape_pattern.size()}, reshape_pattern),
                                 false);
                             reshaped->set_friendly_name(view_name);
                             return reshaped;
@@ -437,9 +483,11 @@ ov::Output<ov::Node> process_view_input_new(const NodeContext & context, int inp
                         ov::op::v0::Constant::create(ov::element::i64, {1}, {slice_dim}));
 
                     if (view_ov_shape.is_static()) {
+                        auto reshape_pattern = build_reshape_pattern(view_ov_shape, view_ggml_shape);
+                        inherit_one_dynamic_dim(reshape_pattern, view_src_ov_shape, view_ggml_shape);
                         auto reshaped = std::make_shared<ov::op::v1::Reshape>(
                             sliced,
-                            ov::op::v0::Constant::create(ov::element::i64, {ndims}, view_ov_shape.to_shape()),
+                            ov::op::v0::Constant::create(ov::element::i64, {reshape_pattern.size()}, reshape_pattern),
                             false);
                         reshaped->set_friendly_name(view_name);
                         return reshaped;
@@ -492,6 +540,48 @@ ov::Output<ov::Node> process_view_input_new(const NodeContext & context, int inp
                              view_stride.size() == view_ggml_shape.size();
             const size_t relative_offset = view_offset >= view_src_offset ? view_offset - view_src_offset : 0;
 
+            if (same_rank) {
+                const size_t ndims = view_ggml_shape.size();
+                std::vector<int> diff_dims;
+                for (size_t i = 0; i < ndims; ++i) {
+                    if (view_ggml_shape[i] != view_src_ggml_shape[i]) {
+                        diff_dims.push_back(static_cast<int>(i));
+                    }
+                }
+
+                if (diff_dims.size() == 1) {
+                    const size_t slice_dim = static_cast<size_t>(diff_dims[0]);
+                    bool suffix_stride_match = true;
+                    for (size_t i = slice_dim + 1; i < ndims; ++i) {
+                        if (view_stride[i] != view_src_stride[i]) {
+                            suffix_stride_match = false;
+                            break;
+                        }
+                    }
+
+                    if (suffix_stride_match && view_src_stride[slice_dim] > 0 &&
+                        relative_offset % view_src_stride[slice_dim] == 0) {
+                        const int64_t begin_val = static_cast<int64_t>(relative_offset / view_src_stride[slice_dim]);
+                        const int64_t end_val = begin_val + static_cast<int64_t>(view_ggml_shape[slice_dim]);
+                        const int64_t dim_size = static_cast<int64_t>(view_src_ggml_shape[slice_dim]);
+
+                        if (begin_val >= 0 && end_val <= dim_size) {
+                            auto sliced = std::make_shared<ov::op::v8::Slice>(
+                                current,
+                                ov::op::v0::Constant::create(ov::element::i64, {1}, {begin_val}),
+                                ov::op::v0::Constant::create(ov::element::i64, {1}, {end_val}),
+                                ov::op::v0::Constant::create(ov::element::i64, {1}, {1}),
+                                ov::op::v0::Constant::create(
+                                    ov::element::i64,
+                                    {1},
+                                    {static_cast<int64_t>(slice_dim)}));
+                            sliced->set_friendly_name(view_name);
+                            return sliced;
+                        }
+                    }
+                }
+            }
+
             size_t view_elems = 1;
             size_t src_elems = 1;
             if (same_rank) {
@@ -505,6 +595,7 @@ ov::Output<ov::Node> process_view_input_new(const NodeContext & context, int inp
 
             if (same_rank && relative_offset == 0 && same_num_elements) {
                 auto reshape_pattern = build_reshape_pattern(view_ov_shape, view_ggml_shape);
+                inherit_one_dynamic_dim(reshape_pattern, view_src_ov_shape, view_ggml_shape);
 
                 auto reshaped = std::make_shared<ov::op::v1::Reshape>(
                     current, ov::op::v0::Constant::create(ov::element::i64, {reshape_pattern.size()}, reshape_pattern),
@@ -550,6 +641,31 @@ ov::Output<ov::Node> process_view_input_new(const NodeContext & context, int inp
                                 suffix_start,
                                 static_cast<int64_t>(src_tail_elems));
 
+                            // If source tail contains dynamic axes, avoid hard-coding a static tail length
+                            // (e.g. 44800) that can become incompatible at runtime for shorter active lengths.
+                            if (view_src_ov_shape.rank().is_static() &&
+                                view_src_ov_shape.rank().get_length() == static_cast<int64_t>(ndims)) {
+                                bool tail_has_dynamic = false;
+                                for (size_t i = suffix_start; i < ndims; ++i) {
+                                    if (view_src_ov_shape[i].is_dynamic()) {
+                                        tail_has_dynamic = true;
+                                        break;
+                                    }
+                                }
+                                if (tail_has_dynamic) {
+                                    bool has_dynamic_prefix = false;
+                                    for (size_t i = 0; i < suffix_start; ++i) {
+                                        if (prefix_tail_pattern[i] == -1) {
+                                            has_dynamic_prefix = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!has_dynamic_prefix) {
+                                        prefix_tail_pattern[suffix_start] = -1;
+                                    }
+                                }
+                            }
+
                             auto prefix_tail = std::make_shared<ov::op::v1::Reshape>(
                                 current,
                                 ov::op::v0::Constant::create(
@@ -572,6 +688,7 @@ ov::Output<ov::Node> process_view_input_new(const NodeContext & context, int inp
                             }
 
                             auto reshape_pattern = build_reshape_pattern(view_ov_shape, view_ggml_shape);
+                            inherit_one_dynamic_dim(reshape_pattern, view_src_ov_shape, view_ggml_shape);
                             auto reshaped = std::make_shared<ov::op::v1::Reshape>(
                                 selected,
                                 ov::op::v0::Constant::create(ov::element::i64, {reshape_pattern.size()}, reshape_pattern),
