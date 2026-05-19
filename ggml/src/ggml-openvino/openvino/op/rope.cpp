@@ -55,7 +55,19 @@ OutputVector translate_rope(const NodeContext & context) {
         if (context.get_input_size() == 3) {
             rope_freqs_weight = context.get_input(2).get_node_shared_ptr();
         }
-        auto sin_cos = make_sin_cos(op_params, inp_pos, rope_freqs_weight, mode == TYPE_IMROPE);
+        std::shared_ptr<ov::Node> seq_active_start;
+        std::shared_ptr<ov::Node> seq_active_end;
+        if (context.has_input("seq_active_start") && context.has_input("seq_active_end")) {
+            seq_active_start = context.get_input("seq_active_start").get_node_shared_ptr();
+            seq_active_end = context.get_input("seq_active_end").get_node_shared_ptr();
+        }
+        auto sin_cos = make_sin_cos(op_params,
+                                    inp_pos,
+                                    rope_freqs_weight,
+                                    mode == TYPE_IMROPE,
+                                    false,
+                                    seq_active_start,
+                                    seq_active_end);
         sin_theta_node = sin_cos.first;
         cos_theta_node = sin_cos.second;
     }

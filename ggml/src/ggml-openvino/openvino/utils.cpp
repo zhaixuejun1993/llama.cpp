@@ -121,7 +121,9 @@ std::pair<ov::Output<Node>, ov::Output<Node>> make_sin_cos(int32_t * rope_params
                                                            std::shared_ptr<ov::Node> inp_pos,
                                                            std::shared_ptr<ov::Node> rope_freqs_weight,
                                                            bool imrope,
-                                                           bool stateful) {
+                                                           bool stateful,
+                                                           std::shared_ptr<ov::Node> seq_active_start,
+                                                           std::shared_ptr<ov::Node> seq_active_end) {
     if (stateful) {
         inp_pos = std::make_shared<ov::op::v0::Squeeze>(inp_pos, ov::op::v0::Constant::create(ov::element::i64, {1}, {0}));
         inp_pos = std::make_shared<ov::op::v0::Convert>(inp_pos, ov::element::f32);
@@ -140,6 +142,12 @@ std::pair<ov::Output<Node>, ov::Output<Node>> make_sin_cos(int32_t * rope_params
         auto pos_perm =
             std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{4}, std::vector<int64_t>{0, 3, 1, 2});
         inp_pos = std::make_shared<ov::op::v1::Transpose>(inp_pos, pos_perm);
+
+        if (!imrope && seq_active_start && seq_active_end) {
+            auto one = ov::op::v0::Constant::create(ov::element::i64, {1}, {1});
+            auto axis = ov::op::v0::Constant::create(ov::element::i64, {1}, {1});
+            inp_pos = std::make_shared<ov::op::v8::Slice>(inp_pos, seq_active_start, seq_active_end, one, axis);
+        }
     }
 
     float freq_base;

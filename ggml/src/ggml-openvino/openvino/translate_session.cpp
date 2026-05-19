@@ -130,11 +130,17 @@ void add_rope_sin_cos(TensorMap & tensor_map, GgmlDecoder & ggml_model_decoder) 
     }
     auto inp_pos = tensor_map.at("inp_pos").get_node_shared_ptr();
     std::shared_ptr<ov::Node> rope_freqs_weight;
+    std::shared_ptr<ov::Node> seq_active_start;
+    std::shared_ptr<ov::Node> seq_active_end;
     if (tensor_map.find("rope_freqs.weight") != tensor_map.end()) {
         rope_freqs_weight = tensor_map.at("rope_freqs.weight").get_node_shared_ptr();
     }
+    if (tensor_map.find("seq_active_start") != tensor_map.end() && tensor_map.find("seq_active_end") != tensor_map.end()) {
+        seq_active_start = tensor_map.at("seq_active_start").get_node_shared_ptr();
+        seq_active_end = tensor_map.at("seq_active_end").get_node_shared_ptr();
+    }
 
-    auto sin_cos = make_sin_cos(rope_params, inp_pos, rope_freqs_weight);
+    auto sin_cos = make_sin_cos(rope_params, inp_pos, rope_freqs_weight, false, false, seq_active_start, seq_active_end);
     auto sin_theta = sin_cos.first;
     auto cos_theta = sin_cos.second;
 
