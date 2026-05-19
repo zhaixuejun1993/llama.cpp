@@ -1414,6 +1414,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
         sched->n_splits = i_split + 1;
     }
 
+    // ggml_backend_sched_print_assignments(sched, graph);
     if (sched->debug) {
         ggml_backend_sched_print_assignments(sched, graph);
     }
@@ -1715,7 +1716,7 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
 
         if (!sched->callback_eval) {
             // print split id and the backends in this split for easier debugging
-            printf("computing split %d on backend %s (nodes %d-%d, inputs %d)\n", split_id, ggml_backend_name(split_backend), split->i_start, split->i_end, split->n_inputs);
+            // printf("computing split %d on backend %s (nodes %d-%d, inputs %d)\n", split_id, ggml_backend_name(split_backend), split->i_start, split->i_end, split->n_inputs);
             enum ggml_status ec = ggml_backend_graph_compute_async(split_backend, &split->graph);
             if (ec != GGML_STATUS_SUCCESS) {
                 return ec;

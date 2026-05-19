@@ -200,6 +200,7 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
             std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
             auto it = r_ctx->decoder_cache.find(key);
             cache_hit = it != r_ctx->decoder_cache.end();
+            // cache_hit = false;
             if (cache_hit) {
                 entry = it->second;
             } else {
@@ -294,7 +295,7 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
             if (getenv("GGML_OPENVINO_DUMP_IR")) {
                 char timestamped_filename[64];
                 auto timestamp = (long long) ggml_time_us();
-                snprintf(timestamped_filename, sizeof(timestamped_filename), "model_%lld.xml", timestamp);
+                snprintf(timestamped_filename, sizeof(timestamped_filename), "xj_model_%lld.xml", timestamp);
                 ov::serialize(model, timestamped_filename);
             }
 
