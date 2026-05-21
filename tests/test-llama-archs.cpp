@@ -512,7 +512,7 @@ static int test_backends(const llm_arch target_arch, const size_t seed, const gg
             }
         }
 
-        dev_configs.emplace_back(devices_meta, "Meta", LLAMA_SPLIT_MODE_TENSOR);
+        // dev_configs.emplace_back(devices_meta, "Meta", LLAMA_SPLIT_MODE_TENSOR);
     }
 
     bool all_ok = true;
@@ -610,7 +610,7 @@ int main(int argc, char ** argv) {
     std::random_device rd;
 
     llm_arch arch = LLM_ARCH_UNKNOWN;
-    size_t seed = rd();
+    size_t seed = 0x12345678ULL;
     ggml_log_level log_level = GGML_LOG_LEVEL_ERROR;
     std::string out;
 

@@ -55,7 +55,7 @@ static const std::map<llm_arch, const char *> LLM_ARCH_NAMES = {
     { LLM_ARCH_GEMMA,            "gemma"            },
     { LLM_ARCH_GEMMA2,           "gemma2"           },
     { LLM_ARCH_GEMMA3,           "gemma3"           },
-    { LLM_ARCH_GEMMA3N,          "gemma3n"          },
+    { LLM_ARCH_GEMMA3N,          "gemma3n"          }, // accuracy
     { LLM_ARCH_GEMMA4,           "gemma4"           },
     { LLM_ARCH_GEMMA_EMBEDDING,  "gemma-embedding"  },
     { LLM_ARCH_STARCODER2,       "starcoder2"       },
@@ -71,13 +71,13 @@ static const std::map<llm_arch, const char *> LLM_ARCH_NAMES = {
     { LLM_ARCH_OLMO2,            "olmo2"            },
     { LLM_ARCH_OLMOE,            "olmoe"            },
     { LLM_ARCH_OPENELM,          "openelm"          },
-    { LLM_ARCH_ARCTIC,           "arctic"           },
+    { LLM_ARCH_ARCTIC,           "arctic"           }, // accuracy 
     { LLM_ARCH_DEEPSEEK,         "deepseek"         },
     { LLM_ARCH_DEEPSEEK2,        "deepseek2"        },
     { LLM_ARCH_DEEPSEEK2OCR,     "deepseek2-ocr"    },
     { LLM_ARCH_CHATGLM,          "chatglm"          },
     { LLM_ARCH_GLM4,             "glm4"             },
-    { LLM_ARCH_GLM4_MOE,         "glm4moe"          },
+    { LLM_ARCH_GLM4_MOE,         "glm4moe"          }, // at here
     { LLM_ARCH_GLM_DSA,          "glm-dsa"          },
     { LLM_ARCH_BITNET,           "bitnet"           },
     { LLM_ARCH_T5,               "t5"               },
