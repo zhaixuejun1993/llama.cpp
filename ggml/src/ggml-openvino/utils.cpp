@@ -199,7 +199,8 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
         {
             std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
             auto it = r_ctx->decoder_cache.find(key);
-            cache_hit = it != r_ctx->decoder_cache.end();
+            // cache_hit = it != r_ctx->decoder_cache.end();
+                cache_hit = false; // TODO: disable cache for now as it causes correctness issue when the same graph is executed multiple times with different parameters, can re-enable once CVS-186519 is fixed
             if (cache_hit) {
                 entry = it->second;
             } else {
