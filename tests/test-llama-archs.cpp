@@ -15,11 +15,239 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <sstream>
 #include <utility>
 #include <vector>
+
+namespace {
+
+struct node_dump_runtime {
+    std::filesystem::path root_dir;
+    std::string filter;
+    std::string barrier_filter;
+    std::string run_tag;
+    size_t node_index = 0;
+    bool enabled = false;
+    bool barrier_enabled = false;
+    bool active = false;
+};
+
+static node_dump_runtime & get_node_dump_runtime() {
+    static node_dump_runtime runtime = []() {
+        node_dump_runtime value;
+        const char * root_dir = getenv("LLAMA_TEST_NODE_DUMP_DIR");
+        if (root_dir != nullptr && root_dir[0] != '\0') {
+            value.root_dir = root_dir;
+            value.enabled = true;
+        }
+
+        const char * filter = getenv("LLAMA_TEST_NODE_DUMP_FILTER");
+        if (filter != nullptr) {
+            value.filter = filter;
+        }
+
+        const char * barrier_filter = getenv("LLAMA_TEST_NODE_BARRIER_FILTER");
+        if (barrier_filter != nullptr) {
+            value.barrier_filter = barrier_filter;
+            value.barrier_enabled = true;
+        }
+
+        return value;
+    }();
+
+    return runtime;
+}
+
+static std::string sanitize_path_component(const std::string & value) {
+    std::string result;
+    result.reserve(value.size());
+
+    for (unsigned char ch : value) {
+        if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
+            ch == '.' || ch == '-' || ch == '_') {
+            result.push_back(static_cast<char>(ch));
+        } else {
+            result.push_back('_');
+        }
+    }
+
+    if (result.empty()) {
+        result = "unnamed";
+    }
+
+    return result;
+}
+
+static bool matches_filter_list(const std::string & filter_list, const std::string & value) {
+    if (filter_list.empty()) {
+        return true;
+    }
+
+    size_t begin = 0;
+    while (begin <= filter_list.size()) {
+        size_t end = filter_list.find(',', begin);
+        std::string token = filter_list.substr(begin, end == std::string::npos ? std::string::npos : end - begin);
+
+        size_t first = token.find_first_not_of(" \t");
+        if (first != std::string::npos) {
+            size_t last = token.find_last_not_of(" \t");
+            token = token.substr(first, last - first + 1);
+            if (!token.empty() && value.find(token) != std::string::npos) {
+                return true;
+            }
+        }
+
+        if (end == std::string::npos) {
+            break;
+        }
+        begin = end + 1;
+    }
+
+    return false;
+}
+
+static bool node_dump_matches_filter(const ggml_tensor * tensor) {
+    auto & runtime = get_node_dump_runtime();
+    if ((!runtime.enabled && !runtime.barrier_enabled) || !runtime.active) {
+        return false;
+    }
+
+    if (tensor->op == GGML_OP_VIEW || tensor->op == GGML_OP_RESHAPE || tensor->op == GGML_OP_PERMUTE ||
+        tensor->op == GGML_OP_TRANSPOSE || tensor->op == GGML_OP_CONT) {
+        return false;
+    }
+
+    const std::string & active_filter = runtime.barrier_enabled ? runtime.barrier_filter : runtime.filter;
+    return matches_filter_list(active_filter, tensor->name);
+}
+
+static void dump_node_tensor(const ggml_tensor * tensor, const std::filesystem::path & output_path) {
+    std::vector<uint8_t> raw(ggml_nbytes(tensor));
+    ggml_backend_tensor_get(tensor, raw.data(), 0, raw.size());
+
+    std::ofstream out(output_path);
+    if (!out.is_open()) {
+        throw std::runtime_error("failed to open dump file: " + output_path.string());
+    }
+
+    out << "name=" << tensor->name << '\n';
+    out << "op=" << ggml_op_name(tensor->op) << '\n';
+    out << "type=" << ggml_type_name(tensor->type) << '\n';
+    out << "shape=" << tensor->ne[0] << ',' << tensor->ne[1] << ',' << tensor->ne[2] << ',' << tensor->ne[3] << '\n';
+    out << "stride=" << tensor->nb[0] << ',' << tensor->nb[1] << ',' << tensor->nb[2] << ',' << tensor->nb[3] << '\n';
+    out << "data_begin" << '\n';
+
+    auto write_float = [&](size_t offset) {
+        switch (tensor->type) {
+        case GGML_TYPE_F32:
+            return static_cast<double>(*reinterpret_cast<const float *>(raw.data() + offset));
+        case GGML_TYPE_F16:
+            return static_cast<double>(ggml_fp16_to_fp32(*reinterpret_cast<const ggml_fp16_t *>(raw.data() + offset)));
+        case GGML_TYPE_BF16:
+            return static_cast<double>(ggml_bf16_to_fp32(*reinterpret_cast<const ggml_bf16_t *>(raw.data() + offset)));
+        default:
+            GGML_ABORT("unsupported float dump type");
+        }
+    };
+
+    for (int64_t i3 = 0; i3 < tensor->ne[3]; ++i3) {
+        for (int64_t i2 = 0; i2 < tensor->ne[2]; ++i2) {
+            for (int64_t i1 = 0; i1 < tensor->ne[1]; ++i1) {
+                for (int64_t i0 = 0; i0 < tensor->ne[0]; ++i0) {
+                    const size_t offset =
+                        i3 * tensor->nb[3] +
+                        i2 * tensor->nb[2] +
+                        i1 * tensor->nb[1] +
+                        i0 * tensor->nb[0];
+
+                    out << i0 << ',' << i1 << ',' << i2 << ',' << i3 << ',';
+
+                    switch (tensor->type) {
+                    case GGML_TYPE_F32:
+                    case GGML_TYPE_F16:
+                    case GGML_TYPE_BF16:
+                        out << write_float(offset);
+                        break;
+                    case GGML_TYPE_I32:
+                        out << *reinterpret_cast<const int32_t *>(raw.data() + offset);
+                        break;
+                    case GGML_TYPE_I64:
+                        out << *reinterpret_cast<const int64_t *>(raw.data() + offset);
+                        break;
+                    default:
+                        out << "unsupported";
+                        out << '\n';
+                        out << "data_end" << '\n';
+                        return;
+                    }
+
+                    out << '\n';
+                }
+            }
+        }
+    }
+
+    out << "data_end" << '\n';
+}
+
+static bool node_dump_eval_callback(struct ggml_tensor * tensor, bool ask, void * /*user_data*/) {
+    if (ask) {
+        return node_dump_matches_filter(tensor);
+    }
+
+    auto & runtime = get_node_dump_runtime();
+    if (!node_dump_matches_filter(tensor)) {
+        return true;
+    }
+
+    if (!runtime.enabled) {
+        return true;
+    }
+
+    std::filesystem::path run_dir = runtime.root_dir / runtime.run_tag;
+    std::filesystem::create_directories(run_dir);
+
+    std::ostringstream file_name;
+    file_name << std::setw(5) << std::setfill('0') << runtime.node_index++
+              << "__" << sanitize_path_component(tensor->name) << ".csv";
+
+    dump_node_tensor(tensor, run_dir / file_name.str());
+    return true;
+}
+
+struct scoped_node_dump_run {
+    explicit scoped_node_dump_run(const std::string & run_tag) : runtime(get_node_dump_runtime()) {
+        if (!runtime.enabled && !runtime.barrier_enabled) {
+            return;
+        }
+
+        runtime.run_tag = sanitize_path_component(run_tag);
+        runtime.node_index = 0;
+        runtime.active = true;
+    }
+
+    ~scoped_node_dump_run() {
+        if (!runtime.enabled && !runtime.barrier_enabled) {
+            return;
+        }
+
+        runtime.active = false;
+        runtime.run_tag.clear();
+    }
+
+    node_dump_runtime & runtime;
+};
+
+static std::string make_dump_run_tag(const llm_arch arch, const std::string & config, const std::string & device) {
+    return std::string(llm_arch_name(arch)) + "__" + config + "__" + device;
+}
+
+} // namespace
 
 // normalized mean squared error = mse(a, b) / mse(a, 0)
 static double nmse(const std::vector<float> & a, const std::vector<float> & b) {
@@ -264,6 +492,10 @@ static std::pair<llama_model_ptr, llama_context_ptr> get_model_and_ctx(
     ctx_params.n_ctx = 0;
     ctx_params.n_threads = 4;
     ctx_params.n_threads_batch = 4;
+    if (get_node_dump_runtime().enabled || get_node_dump_runtime().barrier_enabled) {
+        ctx_params.cb_eval = node_dump_eval_callback;
+        ctx_params.cb_eval_user_data = nullptr;
+    }
     if (!encode) {
         ctx_params.n_ubatch = 64;
     }
@@ -555,10 +787,12 @@ static int test_backends(const llm_arch target_arch, const size_t seed, const gg
                 if (!skip) {
                     if (logits_cpu.empty()) {
                         model_and_ctx_cpu = get_model_and_ctx(gguf_ctx.get(), nullptr, seed, {}, LLAMA_SPLIT_MODE_LAYER, encode);
+                        scoped_node_dump_run dump_scope(make_dump_run_tag(arch, config_name, "CPU"));
                         logits_cpu = get_logits(model_and_ctx_cpu.first.get(), model_and_ctx_cpu.second.get(), tokens, encode);
                     }
                     if (dc.split_mode != LLAMA_SPLIT_MODE_TENSOR || llm_arch_supports_sm_tensor(arch)) {
                         model_and_ctx_dev = get_model_and_ctx(gguf_ctx.get(), nullptr, seed, dc.devs, dc.split_mode, encode);
+                        scoped_node_dump_run dump_scope(make_dump_run_tag(arch, config_name, dc.label));
                         logits_dev = get_logits(model_and_ctx_dev.first.get(), model_and_ctx_dev.second.get(), tokens, encode);
                         const double nmse_val = nmse(logits_cpu, logits_dev);
                         snprintf(nmse_str, sizeof(nmse_str), "(%.2e)", nmse_val);
@@ -581,6 +815,7 @@ static int test_backends(const llm_arch target_arch, const size_t seed, const gg
                         rewind(file);
 
                         auto model_and_ctx_roundtrip = get_model_and_ctx(nullptr, file, seed, dc.devs, dc.split_mode, encode);
+                        scoped_node_dump_run dump_scope(make_dump_run_tag(arch, config_name, dc.label + "_roundtrip"));
                         const std::vector<float> logits_roundtrip = get_logits(
                             model_and_ctx_roundtrip.first.get(), model_and_ctx_roundtrip.second.get(), tokens, encode);
                         status_roundtrip = "\033[1;32mOK\033[0m";

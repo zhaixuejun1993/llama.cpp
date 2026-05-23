@@ -1483,7 +1483,7 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
                     }
                 }
                 if (m_node_dynamic_dims[node] == -1) {
-                    std::cout << "Cannot determine dynamic dim for RESHAPE node: " << node->name << std::endl;
+                    // std::cout << "Cannot determine dynamic dim for RESHAPE node: " << node->name << std::endl;
                 }
             }
             break;
@@ -1536,8 +1536,8 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
                     }
                     if (matched_dim_count != 1) {
                         m_node_dynamic_dims[node] = -1;
-                        std::cout << "Warning: Cannot determine dynamic dim for CONT node: " << node->name
-                                  << " and its src[0]: " << node->src[0]->name << std::endl;
+                        // std::cout << "Warning: Cannot determine dynamic dim for CONT node: " << node->name
+                        //           << " and its src[0]: " << node->src[0]->name << std::endl;
                     }
                 }
             }

@@ -1414,7 +1414,7 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
         sched->n_splits = i_split + 1;
     }
 
-    // ggml_backend_sched_print_assignments(sched, graph);
+    ggml_backend_sched_print_assignments(sched, graph);
     if (sched->debug) {
         ggml_backend_sched_print_assignments(sched, graph);
     }
