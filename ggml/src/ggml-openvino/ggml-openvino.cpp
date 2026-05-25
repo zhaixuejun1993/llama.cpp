@@ -994,11 +994,6 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
         break;
     }
     case GGML_OP_PERMUTE: {
-        if (ggml_openvino_get_device_name() == "GPU" && op->src[0] != nullptr && op->src[0]->op == GGML_OP_VIEW &&
-            op->src[0]->src[0] != nullptr && op->src[0]->src[0]->op == GGML_OP_NONE &&
-            !ggml_is_contiguous(op->src[0])) {
-            return true;
-        }
         if (op->type == GGML_TYPE_BF16) {
             // err msg: [GPU] Could not find a suitable kernel for transpose
             // GGML_LOG_WARN("OpenVINO backend does not support PERMUTE with BF16 type\n");
