@@ -832,10 +832,43 @@ static bool checked_mul_size(size_t a, size_t b, size_t & out) {
     return true;
 }
 
+static bool is_target_moe_mul_mat_id(const ggml_tensor * op) {
+    const ggml_tensor * weights = op->src[0];
+    if (weights == nullptr) {
+        return false;
+    }
+
+    return strncmp(weights->name, "blk.0.ffn_gate_exps", sizeof("blk.0.ffn_gate_exps") - 1) == 0 ||
+           strncmp(weights->name, "blk.0.ffn_up_exps", sizeof("blk.0.ffn_up_exps") - 1) == 0 ||
+           strncmp(weights->name, "blk.0.ffn_down_exps", sizeof("blk.0.ffn_down_exps") - 1) == 0;
+}
+
+static bool tensor_name_starts_with(const ggml_tensor * tensor, const char * prefix) {
+    return tensor != nullptr && strncmp(tensor->name, prefix, strlen(prefix)) == 0;
+}
+
+static bool is_moe_routing_weights_get_rows(const ggml_tensor * op) {
+    if (op == nullptr || op->op != GGML_OP_GET_ROWS || !tensor_name_starts_with(op, "ffn_moe_weights")) {
+        return false;
+    }
+
+    const ggml_tensor * ids = op->src[1];
+    if (ids == nullptr || ids->op != GGML_OP_VIEW || !tensor_name_starts_with(ids, "ffn_moe_topk")) {
+        return false;
+    }
+
+    const ggml_tensor * argsort = ids->src[0];
+    return argsort != nullptr && argsort->op == GGML_OP_ARGSORT && tensor_name_starts_with(argsort, "ffn_moe_argsort");
+}
+
+static bool is_moe_routing_weights_reshape(const ggml_tensor * op) {
+    return op != nullptr && op->op == GGML_OP_RESHAPE && tensor_name_starts_with(op, "ffn_moe_weights") &&
+           is_moe_routing_weights_get_rows(op->src[0]);
+}
+
 static bool mul_mat_id_requires_large_tmp(const ggml_tensor * op) {
     const ggml_tensor * as = op->src[0];
-    const ggml_tensor * ids = op->src[2];
-    if (as == nullptr || ids == nullptr) {
+    if (as == nullptr) {
         return true;
     }
 
@@ -843,8 +876,8 @@ static bool mul_mat_id_requires_large_tmp(const ggml_tensor * op) {
     // shape [n_tokens, n_used, rows, k]. Skip cases that would create a very
     // large temporary on GPU and let the scheduler fall back instead.
     size_t tmp_elems = 1;
-    if (!checked_mul_size(tmp_elems, static_cast<size_t>(ids->ne[1]), tmp_elems) ||
-        !checked_mul_size(tmp_elems, static_cast<size_t>(ids->ne[0]), tmp_elems) ||
+    if (!checked_mul_size(tmp_elems, static_cast<size_t>(op->ne[2]), tmp_elems) ||
+        !checked_mul_size(tmp_elems, static_cast<size_t>(op->ne[1]), tmp_elems) ||
         !checked_mul_size(tmp_elems, static_cast<size_t>(as->ne[1]), tmp_elems) ||
         !checked_mul_size(tmp_elems, static_cast<size_t>(as->ne[0]), tmp_elems)) {
         return true;
@@ -856,6 +889,10 @@ static bool mul_mat_id_requires_large_tmp(const ggml_tensor * op) {
     }
 
     static constexpr size_t mul_mat_id_tmp_limit = 1ULL << 30; // 1 GiB
+    static constexpr size_t target_moe_mul_mat_id_tmp_limit = 128ULL << 30; // reserve-shape upper bound
+    if (is_target_moe_mul_mat_id(op)) {
+        return tmp_bytes > target_moe_mul_mat_id_tmp_limit;
+    }
     return tmp_bytes > mul_mat_id_tmp_limit;
 }
 
@@ -875,14 +912,14 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
         // Keep the MoE routing weights gather on CPU for GPU runs. Splitting
         // only at the later SUM/CLAMP/DIV nodes still leaves this routing path
         // numerically unstable for arctic-style MoE graphs.
-        if (strncmp(op->name, "ffn_moe_weights", sizeof("ffn_moe_weights") - 1) == 0) {
+        if (tensor_name_starts_with(op, "ffn_moe_weights") && !is_moe_routing_weights_get_rows(op)) {
             return true;
         }
         break;
     }
     case GGML_OP_RESHAPE: {
-        if (strncmp(op->name, "ffn_moe_weights", sizeof("ffn_moe_weights") - 1) == 0 ||
-            strncmp(op->name, "ffn_norm_exps", sizeof("ffn_norm_exps") - 1) == 0) {
+        if ((tensor_name_starts_with(op, "ffn_moe_weights") && !is_moe_routing_weights_reshape(op)) ||
+            tensor_name_starts_with(op, "ffn_norm_exps")) {
             return true;
         }
         break;
@@ -928,11 +965,6 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
         break;
     }
     case GGML_OP_SOFT_MAX: {
-        if (op->src[2] != nullptr) {
-            // GGML_LOG_WARN("OpenVINO backend does not support SOFT_MAX with sinks\n");
-            return true;
-        }
-
         if (strncmp(op->name, "ffn_moe_probs", sizeof("ffn_moe_probs") - 1) == 0) {
             return true;
         }
@@ -1015,12 +1047,6 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
         break;
     }
     case GGML_OP_MUL_MAT: {
-        if (ggml_openvino_get_device_name() == "GPU" && op->src[1]->op == GGML_OP_SOFT_MAX &&
-            op->src[0]->op == GGML_OP_CONT && op->src[0]->src[0] != nullptr &&
-            op->src[0]->src[0]->op == GGML_OP_TRANSPOSE && op->src[0]->src[0]->src[0] != nullptr &&
-            op->src[0]->src[0]->src[0]->op == GGML_OP_PERMUTE) {
-            return true;
-        }
         if (op->src[0]->type == GGML_TYPE_F16 && op->src[1]->type == GGML_TYPE_F16) {
             // Has accuracy issue, try enabling this and see `test-backend-ops -o "MUL_MAT"`
             // GGML_LOG_WARN("OpenVINO backend does not support MUL_MAT with two F16 tensors\n");
@@ -1039,17 +1065,12 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
         }
         break;
     }
-    case GGML_OP_MUL_MAT_ID: {
-        if (strncmp(op->name, "ffn_moe_gate_up", sizeof("ffn_moe_gate_up") - 1) == 0 ||
-            strncmp(op->name, "ffn_moe_down", sizeof("ffn_moe_down") - 1) == 0) {
-            return true;
-        }
-
-        if (mul_mat_id_requires_large_tmp(op)) {
-            return true;
-        }
-        break;
-    }
+    // case GGML_OP_MUL_MAT_ID: {
+    //     if (mul_mat_id_requires_large_tmp(op)) {
+    //         return true;
+    //     }
+    //     break;
+    // }
     case GGML_OP_ROPE: {
         const int32_t * op_params = op->op_params;
         const int n_dims = op_params[1];
@@ -1133,13 +1154,15 @@ static bool ggml_backend_openvino_device_supports_op(ggml_backend_dev_t dev, con
 
     static std::set<ggml_type> supported_types{GGML_TYPE_F32,  GGML_TYPE_F16,  GGML_TYPE_BF16, GGML_TYPE_I64,
                                                GGML_TYPE_I32,  GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, GGML_TYPE_Q4_K,
-                                               GGML_TYPE_Q5_K, GGML_TYPE_Q8_0, GGML_TYPE_Q6_K};
+                                               GGML_TYPE_Q5_K, GGML_TYPE_Q8_0, GGML_TYPE_Q6_K, GGML_TYPE_MXFP4};
 
     static const std::set<ggml_op> supported_ops{GGML_OP_NONE,
                                                  GGML_OP_ADD,
                                                  GGML_OP_CONCAT,
                                                  GGML_OP_DIV,
                                                  GGML_OP_MUL,
+                                                 GGML_OP_ADD_ID,
+                                                 GGML_OP_ARGSORT,
                                                  GGML_OP_MUL_MAT,
                                                  GGML_OP_MUL_MAT_ID,
                                                  GGML_OP_VIEW,
@@ -1170,6 +1193,7 @@ static bool ggml_backend_openvino_device_supports_op(ggml_backend_dev_t dev, con
     };
     static const std::set<ggml_glu_op> supported_glu_ops{
         GGML_GLU_OP_SWIGLU,
+        GGML_GLU_OP_SWIGLU_OAI,
         GGML_GLU_OP_GEGLU,
     };
 
@@ -1231,7 +1255,12 @@ static bool ggml_backend_openvino_device_supports_op(ggml_backend_dev_t dev, con
             // GGML_LOG_WARN("OpenVINO backend does not support tensor type %s\n", ggml_type_name(src->type));
             return false;
         }
-        if (ggml_is_quantized(src->type) && src->ne[2] != 1) {
+        if (src->type == GGML_TYPE_MXFP4 &&
+            !(op->op == GGML_OP_MUL_MAT_ID && src == op->src[0])) {
+            return false;
+        }
+        if (ggml_is_quantized(src->type) && src->ne[2] != 1 &&
+            !(op->op == GGML_OP_MUL_MAT_ID && src == op->src[0] && src->type == GGML_TYPE_MXFP4)) {
             // GGML_LOG_WARN("OpenVINO backend does not support 3D quantized tensors\n");
             return false;
         }

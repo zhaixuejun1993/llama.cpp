@@ -687,8 +687,17 @@ void GgmlOvDecoder::compute_model_outputs() {
     for (int node_n = 0; node_n < m_cgraph->n_nodes; node_n++) {
         auto * cur_node = m_cgraph->nodes[node_n];
         // if the node op is NONE means this node is not used at all, we can skip it directly without adding to model outputs.
-        if (cur_node->op == GGML_OP_NONE || cur_node->op == GGML_OP_VIEW || cur_node->op == GGML_OP_RESHAPE) {
+        if (cur_node->op == GGML_OP_NONE) {
             continue;
+        }
+        if (cur_node->op == GGML_OP_VIEW || cur_node->op == GGML_OP_RESHAPE) {
+            const std::string node_name(cur_node->name);
+            const bool moe_routing_boundary = m_model_is_splitted &&
+                ((cur_node->op == GGML_OP_VIEW && node_name.rfind("ffn_moe_topk", 0) == 0) ||
+                 (cur_node->op == GGML_OP_RESHAPE && node_name.rfind("ffn_moe_weights", 0) == 0));
+            if (!moe_routing_boundary) {
+                continue;
+            }
         }
         auto cur_node_use_count = m_cgraph->use_counts[ggml_hash_find(&m_cgraph->visited_hash_set, cur_node)];
         if (cur_node_use_count == 0) {
@@ -788,6 +797,45 @@ std::map<std::string, std::shared_ptr<ov::Node>> GgmlOvDecoder::create_weight_no
     return model_weights;
 }
 
+static std::shared_ptr<ov::Node> create_mxfp4_packed_weight_node(const ggml_tensor * tensor) {
+    static constexpr int64_t mxfp4_block_size = 32;
+    struct mxfp4_block {
+        uint8_t e;
+        uint8_t qs[mxfp4_block_size / 2];
+    };
+    static_assert(sizeof(mxfp4_block) == 17, "unexpected MXFP4 block size");
+
+    GGML_ASSERT(tensor->type == GGML_TYPE_MXFP4);
+    GGML_ASSERT(tensor->ne[0] % mxfp4_block_size == 0);
+
+    const int64_t n_blocks = tensor->ne[0] / mxfp4_block_size;
+    ov::Tensor weight_tensor(ov::element::u8, ov::Shape{static_cast<size_t>(tensor->ne[3]),
+                                                        static_cast<size_t>(tensor->ne[2]),
+                                                        static_cast<size_t>(tensor->ne[1]),
+                                                        static_cast<size_t>(n_blocks),
+                                                        sizeof(mxfp4_block)});
+    auto * dst = weight_tensor.data<uint8_t>();
+    const auto * data = static_cast<const uint8_t *>(tensor->data);
+
+    for (int64_t i3 = 0; i3 < tensor->ne[3]; ++i3) {
+        for (int64_t i2 = 0; i2 < tensor->ne[2]; ++i2) {
+            for (int64_t i1 = 0; i1 < tensor->ne[1]; ++i1) {
+                const uint8_t * row = data + i3 * tensor->nb[3] + i2 * tensor->nb[2] + i1 * tensor->nb[1];
+                for (int64_t ib = 0; ib < n_blocks; ++ib) {
+                    const uint8_t * block = row + ib * tensor->nb[0];
+                    const int64_t base = (((i3 * tensor->ne[2] + i2) * tensor->ne[1] + i1) * n_blocks + ib) *
+                                         static_cast<int64_t>(sizeof(mxfp4_block));
+                    memcpy(dst + base, block, sizeof(mxfp4_block));
+                }
+            }
+        }
+    }
+
+    auto weight_node = std::make_shared<ov::op::v0::Constant>(weight_tensor);
+    weight_node->set_friendly_name(tensor->name);
+    return weight_node;
+}
+
 std::shared_ptr<ov::Node> GgmlOvDecoder::create_weight_node(ggml_tensor * tensor, bool naive) {
     const bool is_ov_buffer = ggml_backend_buffer_is_openvino(tensor->buffer);
 
@@ -814,6 +862,10 @@ std::shared_ptr<ov::Node> GgmlOvDecoder::create_weight_node(ggml_tensor * tensor
                 return quant_extra->weight_node;
             }
         }
+    }
+
+    if (tensor->type == GGML_TYPE_MXFP4) {
+        return create_mxfp4_packed_weight_node(tensor);
     }
 
     // MUL_MAT_ID expert weights are 3D GGML tensors [k, m, n_expert].
@@ -1271,6 +1323,7 @@ std::string GgmlOvDecoder::compute_op_type(const ggml_tensor * node) {
         {GGML_OP_DIV,             "GGML_OP_DIV"            },
         {GGML_OP_DUP,             "GGML_OP_DUP"            },
         {GGML_OP_GET_ROWS,        "GGML_OP_GET_ROWS"       },
+        {GGML_OP_ADD_ID,          "GGML_OP_ADD_ID"         },
         {GGML_OP_MUL,             "GGML_OP_MUL"            },
         {GGML_OP_MUL_MAT,         "GGML_OP_MUL_MAT"        },
         {GGML_OP_MUL_MAT_ID,      "GGML_OP_MUL_MAT_ID"     },
@@ -1314,9 +1367,10 @@ std::string GgmlOvDecoder::compute_op_type(const ggml_tensor * node) {
         {GGML_UNARY_OP_COUNT,       "GGML_UNARY_OP_COUNT"      }
     };
     static const std::map<ggml_glu_op, std::string> glu_ops = {
-        {GGML_GLU_OP_SWIGLU, "GGML_GLU_OP_SWIGLU"},
-        {GGML_GLU_OP_GEGLU,  "GGML_GLU_OP_GEGLU" },
-        {GGML_GLU_OP_REGLU,  "GGML_GLU_OP_REGLU" }
+        {GGML_GLU_OP_SWIGLU,     "GGML_GLU_OP_SWIGLU"    },
+        {GGML_GLU_OP_SWIGLU_OAI, "GGML_GLU_OP_SWIGLU_OAI"},
+        {GGML_GLU_OP_GEGLU,      "GGML_GLU_OP_GEGLU"     },
+        {GGML_GLU_OP_REGLU,      "GGML_GLU_OP_REGLU"     }
     };
 
     switch (node->op) {

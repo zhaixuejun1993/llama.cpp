@@ -10,9 +10,15 @@
 #include <openvino/op/add.hpp>
 #include <openvino/op/constant.hpp>
 #include <openvino/op/convert.hpp>
+#include <openvino/op/divide.hpp>
+#include <openvino/op/exp.hpp>
+#include <openvino/op/maximum.hpp>
 #include <openvino/op/multiply.hpp>
+#include <openvino/op/reduce_max.hpp>
+#include <openvino/op/reduce_sum.hpp>
 #include <openvino/op/reshape.hpp>
 #include <openvino/op/softmax.hpp>
+#include <openvino/op/subtract.hpp>
 #include <vector>
 
 namespace ov {
@@ -23,9 +29,10 @@ namespace op {
 // Reimplementation of GGML_OP_SOFT_MAX semantics for OpenVINO backend:
 // 1) logits = src0 * scale
 // 2) logits += mask (if provided)
-// 3) softmax over the last dimension
+// 3) if attention sinks are provided, include one per-head sink logit in the softmax denominator
+// 4) softmax over the last dimension
 OutputVector translate_soft_max(const NodeContext & context) {
-    num_inputs_check(context, 1, 2);
+    num_inputs_check(context, 1, 3);
 
     float scale = 1.0f;
     float max_bias = 0.0f;
@@ -94,8 +101,37 @@ OutputVector translate_soft_max(const NodeContext & context) {
         logits = std::make_shared<ov::op::v1::Add>(logits, mask);
     }
 
-    // Softmax along last dimension (equivalent to ggml softmax over ne[0]).
-    auto res = std::make_shared<ov::op::v8::Softmax>(logits, -1);
+    ov::Output<ov::Node> res;
+    if (context.get_input_size() > 2) {
+        auto output_shape = context.get_output_shape();
+        FRONT_END_CHECK_IMPLEMENTED(output_shape.rank().is_static() && output_shape.rank().get_length() == 4,
+                                    "OpenVINO softmax sinks path expects rank-4 tensor");
+        FRONT_END_CHECK_IMPLEMENTED(output_shape[1].is_static(),
+                                    "OpenVINO softmax sinks path expects static head dimension");
+
+        ov::Output<ov::Node> sinks = context.get_input(2);
+        if (sinks.get_element_type() != logits.get_element_type()) {
+            sinks = std::make_shared<ov::op::v0::Convert>(sinks, logits.get_element_type());
+        }
+
+        const int64_t n_head = output_shape[1].get_length();
+        auto sinks_shape = ov::op::v0::Constant::create(ov::element::i64, {4}, std::vector<int64_t>{1, n_head, 1, 1});
+        auto sinks_4d = std::make_shared<ov::op::v1::Reshape>(sinks, sinks_shape, false);
+
+        auto axes = ov::op::v0::Constant::create(ov::element::i64, {1}, {-1});
+        auto softmax = std::make_shared<ov::op::v8::Softmax>(logits, -1);
+        auto logits_max = std::make_shared<ov::op::v1::ReduceMax>(logits, axes, true);
+        auto row_max = std::make_shared<ov::op::v1::Maximum>(logits_max, sinks_4d);
+        auto exp_logits = std::make_shared<ov::op::v0::Exp>(std::make_shared<ov::op::v1::Subtract>(logits, row_max));
+        auto sum_logits = std::make_shared<ov::op::v1::ReduceSum>(exp_logits, axes, true);
+        auto exp_sink = std::make_shared<ov::op::v0::Exp>(std::make_shared<ov::op::v1::Subtract>(sinks_4d, row_max));
+        auto denom = std::make_shared<ov::op::v1::Add>(sum_logits, exp_sink);
+        auto correction = std::make_shared<ov::op::v1::Divide>(sum_logits, denom);
+        res = std::make_shared<ov::op::v1::Multiply>(softmax, correction);
+    } else {
+        // Softmax along last dimension (equivalent to ggml softmax over ne[0]).
+        res = std::make_shared<ov::op::v8::Softmax>(logits, -1);
+    }
 
     return rename_outputs_with_suffix({res}, context.get_name());
 }

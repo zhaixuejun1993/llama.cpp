@@ -173,9 +173,59 @@ ov::Tensor create_ov_output_tensor(std::shared_ptr<GgmlOvDecoder> ggml_decoder,
         output_shape = ggml_decoder->get_shape(ggml_tensor);
     }
 
+    if (ggml_decoder->is_splited_model() && !ggml_is_contiguous(ggml_tensor)) {
+        return ov::Tensor(output_type, output_shape);
+    }
+
     ov::Tensor output_tensor(output_type, output_shape, ggml_tensor->data);
     return output_tensor;
 }
+
+namespace {
+bool needs_contiguous_split_output_copy(std::shared_ptr<GgmlOvDecoder> ggml_decoder, const ggml_tensor * ggml_tensor) {
+    return ggml_decoder->is_splited_model() && !ggml_is_contiguous(ggml_tensor) && ggml_nbytes(ggml_tensor) > 0;
+}
+
+void copy_contiguous_ov_output_to_ggml(const ov::Tensor & output_tensor, ggml_tensor * ggml_tensor) {
+    const size_t element_size = ggml_type_size(ggml_tensor->type);
+    const size_t block_size   = ggml_blck_size(ggml_tensor->type);
+
+    GGML_ASSERT(block_size == 1 && "non-contiguous split outputs must be plain element types");
+
+    const auto * src = static_cast<const uint8_t *>(output_tensor.data());
+    auto * dst       = static_cast<uint8_t *>(ggml_tensor->data);
+    size_t src_offset = 0;
+
+    for (size_t i3 = 0; i3 < static_cast<size_t>(ggml_tensor->ne[3]); ++i3) {
+        for (size_t i2 = 0; i2 < static_cast<size_t>(ggml_tensor->ne[2]); ++i2) {
+            for (size_t i1 = 0; i1 < static_cast<size_t>(ggml_tensor->ne[1]); ++i1) {
+                for (size_t i0 = 0; i0 < static_cast<size_t>(ggml_tensor->ne[0]); ++i0) {
+                    const size_t dst_offset =
+                        i3 * ggml_tensor->nb[3] +
+                        i2 * ggml_tensor->nb[2] +
+                        i1 * ggml_tensor->nb[1] +
+                        i0 * ggml_tensor->nb[0];
+                    std::memcpy(dst + dst_offset, src + src_offset, element_size);
+                    src_offset += element_size;
+                }
+            }
+        }
+    }
+}
+
+void copy_contiguous_split_outputs(std::shared_ptr<GgmlOvDecoder> ggml_decoder,
+                                   std::shared_ptr<ov::InferRequest> infer_request,
+                                   const std::vector<std::string> & output_names) {
+    for (size_t i = 0; i < output_names.size(); i++) {
+        auto * ggml_tensor = ggml_decoder->get_model_outputs().at(output_names[i]);
+        if (!needs_contiguous_split_output_copy(ggml_decoder, ggml_tensor)) {
+            continue;
+        }
+
+        copy_contiguous_ov_output_to_ggml(infer_request->get_output_tensor(i), ggml_tensor);
+    }
+}
+}  // namespace
 
 enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<ov_runtime_context> r_ctx) {
     auto & core = ov_singleton_core();
@@ -379,6 +429,8 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
 
         infer_request->infer();
         infer_end_time = ggml_time_us();
+
+        copy_contiguous_split_outputs(ggml_decoder, infer_request, ov_output_names);
 
         if (getenv("GGML_OPENVINO_DEBUG_OUTPUT")) {
             for (size_t i = 0; i < ov_output_names.size(); i++) {
@@ -594,6 +646,8 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
 
             infer_request->infer();
 
+            copy_contiguous_split_outputs(ggml_decoder, infer_request, ov_output_names_local);
+
             if (getenv("GGML_OPENVINO_DEBUG_OUTPUT")) {
                 for (size_t i = 0; i < ov_output_names_local.size(); i++) {
                     const auto output_tensor = infer_request->get_output_tensor(i);
@@ -622,6 +676,8 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
 
         infer_request->infer();
         infer_end_time = ggml_time_us();
+
+        copy_contiguous_split_outputs(ggml_decoder, infer_request, ov_output_names_local);
 
         if (getenv("GGML_OPENVINO_DEBUG_OUTPUT")) {
             for (size_t i = 0; i < ov_output_names_local.size(); i++) {

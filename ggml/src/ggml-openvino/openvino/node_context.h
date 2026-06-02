@@ -148,6 +148,10 @@ public:
         return m_decoder->get_op_name(m_node_idx);
     }
 
+    const std::string& get_op_type() const {
+        return m_decoder->get_op_type(m_node_idx);
+    }
+
     ov::Any get_attribute_as_any(const std::string& name) const override {
         return m_decoder->get_attribute(name);
     }

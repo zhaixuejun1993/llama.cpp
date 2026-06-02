@@ -39,6 +39,72 @@ void num_inputs_check(const NodeContext & context, size_t min_inputs, size_t max
     FRONT_END_OP_CONVERSION_CHECK(input_size <= max_inputs, "Got more inputs than expected");
 }
 
+namespace {
+ov::Output<ov::Node> process_simple_view(ov::Output<ov::Node> input,
+                                         const ov::PartialShape & input_shape,
+                                         const ov::PartialShape & output_shape,
+                                         const std::vector<size_t> & input_stride,
+                                         const std::vector<size_t> & output_stride,
+                                         size_t input_offset,
+                                         size_t output_offset,
+                                         const std::string & output_name) {
+    if (input_shape == output_shape) {
+        return input;
+    }
+
+    if (!input_shape.rank().is_static() || !output_shape.rank().is_static() ||
+        input_shape.rank().get_length() != output_shape.rank().get_length() ||
+        input_stride.size() != output_stride.size() ||
+        input_stride.size() != static_cast<size_t>(input_shape.rank().get_length())) {
+        return input;
+    }
+
+    bool same_stride = true;
+    std::vector<int> diff_dims;
+    for (size_t i = 0; i < input_stride.size(); ++i) {
+        if (input_stride[i] != output_stride[i]) {
+            same_stride = false;
+            break;
+        }
+        if (input_shape[i] != output_shape[i]) {
+            diff_dims.push_back(static_cast<int>(i));
+        }
+    }
+
+    if (!same_stride || diff_dims.size() != 1) {
+        return input;
+    }
+
+    const int slice_dim = diff_dims[0];
+    if (!input_shape[slice_dim].is_static() || !output_shape[slice_dim].is_static() || input_stride[slice_dim] == 0) {
+        return input;
+    }
+
+    const size_t relative_offset = output_offset >= input_offset ? output_offset - input_offset : 0;
+    if (relative_offset % input_stride[slice_dim] != 0) {
+        return input;
+    }
+
+    const int64_t dim_size = input_shape[slice_dim].get_length();
+    const int64_t slice_size = output_shape[slice_dim].get_length();
+    const int64_t begin_val = static_cast<int64_t>(relative_offset / input_stride[slice_dim]);
+    const int64_t end_val = begin_val + slice_size;
+
+    if (begin_val < 0 || end_val > dim_size) {
+        return input;
+    }
+
+    auto sliced = std::make_shared<ov::op::v8::Slice>(
+        input,
+        ov::op::v0::Constant::create(ov::element::i64, {1}, {begin_val}),
+        ov::op::v0::Constant::create(ov::element::i64, {1}, {end_val}),
+        ov::op::v0::Constant::create(ov::element::i64, {1}, {1}),
+        ov::op::v0::Constant::create(ov::element::i64, {1}, {slice_dim}));
+    sliced->set_friendly_name(output_name);
+    return sliced;
+}
+}  // namespace
+
 int non_cont_dim(std::vector<size_t> ne, std::vector<size_t> nb) {
     int dim = nb.size() - 1;
     size_t bytes = nb[dim];
@@ -262,10 +328,21 @@ ov::Output<ov::Node> process_view_input(const NodeContext & context, int input_i
 
 ov::Output<ov::Node> process_view_input_new(const NodeContext & context, int input_index) {
     auto input = context.get_input(input_index);
+    const bool output_is_view = context.get_op_type() == "GGML_OP_VIEW";
 
     // Check if this input has view inputs
     size_t view_input_size = context.get_view_input_size(input_index);
     if (view_input_size == 0) {
+        if (output_is_view) {
+            return process_simple_view(input,
+                                       context.get_input_shape(input_index),
+                                       context.get_output_shape(),
+                                       context.get_input_stride(input_index),
+                                       context.get_output_stride(),
+                                       0,
+                                       context.get_output_op_offset(),
+                                       context.get_output_name());
+        }
         // No view inputs, return the input as is
         return input;
     }
@@ -741,6 +818,17 @@ ov::Output<ov::Node> process_view_input_new(const NodeContext & context, int inp
                                       view_src_ggml_shape,
                                       view_src_ov_shape,
                                       view_src_name);
+    }
+
+    if (output_is_view) {
+        current = process_simple_view(current,
+                                      context.get_input_shape(input_index),
+                                      context.get_output_shape(),
+                                      context.get_input_stride(input_index),
+                                      context.get_output_stride(),
+                                      context.get_view_input_offset(input_index, 0),
+                                      context.get_output_op_offset(),
+                                      context.get_output_name());
     }
 
     return current;
