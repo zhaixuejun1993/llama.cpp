@@ -49,6 +49,9 @@ void extract_q6_k_data(const ggml_tensor * tensor,
                        ov::Tensor & scales_arr,
                        ov::Tensor & zp_arr);
 
+void extract_mxfp4_data(const ggml_tensor * tensor,
+                        ov::Tensor & weights_arr);
+
 static constexpr size_t GGML_QUANTIZATION_GROUP_SIZE = 32;
 
 ov::Output<ov::Node> make_int8_weights(ov::Tensor & weight,

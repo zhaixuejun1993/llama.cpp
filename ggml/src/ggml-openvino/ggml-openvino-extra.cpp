@@ -235,12 +235,13 @@ ggml_openvino_extracted_layout ggml_openvino_get_extracted_layout(const ggml_ten
         return layout;
     }
 
+    int64_t n_elements = ggml_nelements(tensor);
+
     // Only handle 2D weight tensors
     if (tensor->ne[2] != 1 || tensor->ne[3] != 1) {
         return layout;
     }
 
-    int64_t n_elements = ggml_nelements(tensor);
     const size_t alignment = 64;  // Good for SIMD
 
     // Check if requantization is needed (NPU-specific)
@@ -315,6 +316,7 @@ ggml_openvino_extracted_layout ggml_openvino_get_extracted_layout(const ggml_ten
     layout.is_u4 = false;
     layout.weights_per_block = 32;
     layout.is_symmetric = false;
+    bool is_float_extracted = false;
 
     switch (tensor->type) {
     case GGML_TYPE_Q4_0:
@@ -343,6 +345,10 @@ ggml_openvino_extracted_layout ggml_openvino_get_extracted_layout(const ggml_ten
     case GGML_TYPE_Q5_K:
         break;
 
+    case GGML_TYPE_MXFP4:
+        is_float_extracted = true;
+        break;
+
     default:
         // Unsupported quantization type
         return layout;
@@ -350,13 +356,13 @@ ggml_openvino_extracted_layout ggml_openvino_get_extracted_layout(const ggml_ten
 
     // Calculate sizes
     // Weights: U4 = n_elements/2 bytes, U8 = n_elements bytes
-    layout.weights_size = layout.is_u4 ? (n_elements / 2) : n_elements;
+    layout.weights_size = is_float_extracted ? n_elements * sizeof(float) : (layout.is_u4 ? (n_elements / 2) : n_elements);
 
     // Scales: F16 per block
     int64_t n_blocks = n_elements / layout.weights_per_block;
-    layout.scales_size = n_blocks * sizeof(uint16_t);  // F16 = 2 bytes
+    layout.scales_size = is_float_extracted ? 0 : n_blocks * sizeof(uint16_t);  // F16 = 2 bytes
     // For symmetric quantization, no zp needed (weights stored as signed)
-    if (layout.is_symmetric) {
+    if (is_float_extracted || layout.is_symmetric) {
         layout.zp_size = 0;
     } else {
         layout.zp_size = layout.is_u4 ? ((n_blocks + 1) / 2) : n_blocks;

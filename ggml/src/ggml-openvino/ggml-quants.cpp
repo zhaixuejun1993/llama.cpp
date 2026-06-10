@@ -468,6 +468,27 @@ void extract_q5_k_data(const ggml_tensor * tensor,
     });
 }
 
+void extract_mxfp4_data(const ggml_tensor * tensor, ov::Tensor & weights_arr) {
+    static constexpr int qk = 32;
+    static constexpr int bytes_per_block = 17;
+    static constexpr int8_t kvalues_mxfp4[16] = {0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12};
+
+    const int64_t n_blocks = ggml_nelements(tensor) / qk;
+    const auto * data = static_cast<const uint8_t *>(tensor->data);
+    auto * weights = weights_arr.data<float>();
+
+    ov::parallel_for(n_blocks, [&](size_t i) {
+        const uint8_t * block = data + i * bytes_per_block;
+        const float scale = GGML_E8M0_TO_FP32_HALF(block[0]);
+        const uint8_t * qs_data = block + 1;
+        for (int j = 0; j < qk / 2; ++j) {
+            const uint8_t qs = qs_data[j];
+            weights[i * qk + j] = static_cast<float>(kvalues_mxfp4[qs & 0x0F]) * scale;
+            weights[i * qk + j + qk / 2] = static_cast<float>(kvalues_mxfp4[qs >> 4]) * scale;
+        }
+    });
+}
+
 // TODO Reorder for make_intX_weights
 
 ov::Output<ov::Node> make_int8_weights(ov::Tensor & weight,
@@ -631,6 +652,7 @@ std::shared_ptr<ov::Node> extract_quantized_weights(const ggml_tensor * tensor,
     // Determine block size based on tensor type
     int64_t weights_per_block;
     bool is_u4;
+    bool is_float_extracted = false;
     switch (tensor->type) {
     case GGML_TYPE_Q4_0:
     case GGML_TYPE_Q4_1:
@@ -647,6 +669,11 @@ std::shared_ptr<ov::Node> extract_quantized_weights(const ggml_tensor * tensor,
     case GGML_TYPE_Q6_K:
         is_u4 = false;
         weights_per_block = 16;
+        break;
+    case GGML_TYPE_MXFP4:
+        is_u4 = false;
+        weights_per_block = 32;
+        is_float_extracted = true;
         break;
     default:
         throw std::runtime_error("Unsupported quantized type for extraction: " +
@@ -676,13 +703,18 @@ std::shared_ptr<ov::Node> extract_quantized_weights(const ggml_tensor * tensor,
     case GGML_TYPE_Q5_K:
         extract_q5_k_data(&temp_tensor, weights, scales, zp, use_bias);
         break;
+    case GGML_TYPE_MXFP4:
+        extract_mxfp4_data(&temp_tensor, weights);
+        break;
     default:
         throw std::runtime_error("Unsupported quantized type: " + std::string(ggml_type_name(tensor->type)));
     }
 
     // Create the OpenVINO weight subgraph
     ov::Output<ov::Node> weight_node;
-    if (is_u4) {
+    if (is_float_extracted) {
+        weight_node = std::make_shared<ov::op::v0::Constant>(weights);
+    } else if (is_u4) {
         weight_node = make_int4_weights(weights, scales, zp, weights_per_block, use_bias);
     } else {
         weight_node = make_int8_weights(weights, scales, zp, weights_per_block, use_bias);
@@ -782,9 +814,11 @@ OvWeight process_weight_tensor(const ggml_tensor * tensor, const void * data, vo
         OPENVINO_THROW("Unsupported weight tensor type: ", ggml_type_name(tensor->type));
     }
 
+    const bool is_float_extracted = tensor->type == GGML_TYPE_MXFP4;
+
     result.layout = ggml_openvino_get_extracted_layout(tensor, use_bias);
     const auto & layout = result.layout;
-    if (layout.total_size == 0) {
+    if (layout.total_size == 0 && !is_float_extracted) {
         OPENVINO_THROW("Unsupported quantized type: ", ggml_type_name(tensor->type));
     }
 
@@ -812,23 +846,44 @@ OvWeight process_weight_tensor(const ggml_tensor * tensor, const void * data, vo
     // Quantized path (normal extraction or quantized requant)
     // Create weight/scale/zp tensors - shared between both paths
     // For symmetric quantization, use signed types (i4/i8) and no ZP tensor
-    ov::element::Type weight_type = layout.is_symmetric ? (layout.is_u4 ? ov::element::i4 : ov::element::i8) :
-                                                          (layout.is_u4 ? ov::element::u4 : ov::element::u8);
-    ov::Shape scale_shape = {node_shape[0], node_shape[1] / layout.weights_per_block};
+    ov::element::Type weight_type = is_float_extracted ? ov::element::f32 :
+                                                         (layout.is_symmetric ?
+                                                              (layout.is_u4 ? ov::element::i4 : ov::element::i8) :
+                                                              (layout.is_u4 ? ov::element::u4 : ov::element::u8));
+    ov::Shape weight_shape = node_shape;
+    if (is_float_extracted) {
+        weight_shape.clear();
+        for (int i = GGML_MAX_DIMS - 1; i >= 0; --i) {
+            weight_shape.push_back(static_cast<size_t>(tensor->ne[i]));
+        }
+    }
 
     if (output_base_ptr) {
         uint8_t * buf_base = static_cast<uint8_t *>(output_base_ptr);
-        result.weights = ov::Tensor(weight_type, node_shape, buf_base + layout.weights_offset);
-        result.scales = ov::Tensor(ov::element::f16, scale_shape, buf_base + layout.scales_offset);
-        if (!layout.is_symmetric) {
+        const bool use_output_buffer = !is_float_extracted || layout.total_size >= ggml_nelements(tensor) * sizeof(float);
+        if (use_output_buffer) {
+            result.weights = ov::Tensor(weight_type, weight_shape, buf_base + layout.weights_offset);
+        } else {
+            result.weights = ov::Tensor(weight_type, weight_shape);
+        }
+        if (!is_float_extracted) {
+            ov::Shape scale_shape = {node_shape[0], node_shape[1] / layout.weights_per_block};
+            result.scales = ov::Tensor(ov::element::f16, scale_shape, buf_base + layout.scales_offset);
+        }
+        if (!is_float_extracted && !layout.is_symmetric) {
+            ov::Shape scale_shape = result.scales.get_shape();
             ov::element::Type zp_type = layout.is_u4 ? ov::element::u4 : ov::element::u8;
             result.zp = ov::Tensor(zp_type, scale_shape, buf_base + layout.zp_offset);
         }
         // else: result.zp remains default-constructed (empty) for symmetric
     } else {
-        result.weights = ov::Tensor(weight_type, node_shape);
-        result.scales = ov::Tensor(ov::element::f16, scale_shape);
-        if (!layout.is_symmetric) {
+        result.weights = ov::Tensor(weight_type, weight_shape);
+        if (!is_float_extracted) {
+            ov::Shape scale_shape = {node_shape[0], node_shape[1] / layout.weights_per_block};
+            result.scales = ov::Tensor(ov::element::f16, scale_shape);
+        }
+        if (!is_float_extracted && !layout.is_symmetric) {
+            ov::Shape scale_shape = result.scales.get_shape();
             if (use_bias) {
                 result.zp = ov::Tensor(ov::element::f16, scale_shape);
             } else {
