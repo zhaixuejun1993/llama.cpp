@@ -903,17 +903,10 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
             return true;
         }
 
-        // Keep the MoE routing weights gather on CPU for GPU runs. Splitting
-        // only at the later SUM/CLAMP/DIV nodes still leaves this routing path
-        // numerically unstable for arctic-style MoE graphs.
-        if (strncmp(op->name, "ffn_moe_weights", sizeof("ffn_moe_weights") - 1) == 0) {
-            return true;
-        }
         break;
     }
     case GGML_OP_RESHAPE: {
-        if (strncmp(op->name, "ffn_moe_weights", sizeof("ffn_moe_weights") - 1) == 0 ||
-            strncmp(op->name, "ffn_norm_exps", sizeof("ffn_norm_exps") - 1) == 0) {
+        if (strncmp(op->name, "ffn_norm_exps", sizeof("ffn_norm_exps") - 1) == 0) {
             return true;
         }
         break;
@@ -973,17 +966,6 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
             return true;
         }
 
-        if (strncmp(op->name, "ffn_moe_probs", sizeof("ffn_moe_probs") - 1) == 0) {
-            return true;
-        }
-
-        // GPU execution of the MoE routing weights softmax is numerically unstable
-        // when fused with the surrounding GET_ROWS/reshape path. Keep this softmax
-        // on CPU so the scheduler splits at the same boundary that restores parity.
-        if (op->src[0] != nullptr && op->src[0]->op == GGML_OP_RESHAPE && op->src[0]->src[0] != nullptr &&
-            strncmp(op->src[0]->src[0]->name, "ffn_moe_weights", sizeof("ffn_moe_weights") - 1) == 0) {
-            return true;
-        }
         break;
     }
     case GGML_OP_SUM_ROWS: {
@@ -1019,10 +1001,6 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
             return true;
         }
 
-        if (op->src[4] != nullptr) {
-            // GGML_LOG_WARN("OpenVINO backend does not support FLASH_ATTN_EXT with sinks\n");
-            return true;
-        }
         if (!is_supported_flash_attn_pattern(op)) {
             return true;
         }
@@ -1073,11 +1051,6 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
         break;
     }
     case GGML_OP_MUL_MAT_ID: {
-        if (strncmp(op->name, "ffn_moe_gate_up", sizeof("ffn_moe_gate_up") - 1) == 0 ||
-            strncmp(op->name, "ffn_moe_down", sizeof("ffn_moe_down") - 1) == 0) {
-            return true;
-        }
-
         if (mul_mat_id_requires_large_tmp(op) &&
             !(op->src[0] != nullptr && op->src[0]->type == GGML_TYPE_MXFP4)) {
             return true;
