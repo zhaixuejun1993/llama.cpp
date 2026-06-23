@@ -11,6 +11,7 @@
 #include <openvino/op/concat.hpp>
 #include <openvino/op/constant.hpp>
 #include <openvino/op/convert.hpp>
+#include <openvino/op/shape_of.hpp>
 #include <openvino/op/matmul.hpp>
 #include <openvino/op/multiply.hpp>
 #include <openvino/op/reshape.hpp>
@@ -25,12 +26,48 @@ namespace frontend {
 namespace ggml {
 namespace op {
 
+static ov::Output<ov::Node> apply_attention_sinks(const ov::Output<ov::Node> & qk,
+                                                  const ov::Output<ov::Node> & sinks,
+                                                  int64_t num_heads_kv,
+                                                  int64_t factor) {
+    auto sinks_shape = ov::op::v0::Constant::create(
+        ov::element::i64, {5}, std::vector<int64_t>{1, num_heads_kv, factor, 1, 1});
+    ov::Output<ov::Node> sinks_5d = std::make_shared<ov::op::v1::Reshape>(sinks, sinks_shape, false);
+    if (sinks_5d.get_element_type() != qk.get_element_type()) {
+        sinks_5d = std::make_shared<ov::op::v0::Convert>(sinks_5d, qk.get_element_type());
+    }
+
+    auto qk_shape = std::make_shared<ov::op::v3::ShapeOf>(qk, ov::element::i64);
+    auto suffix_dim = ov::op::v0::Constant::create(ov::element::i64, {1}, {1});
+    auto sinks_target_shape = std::make_shared<ov::op::v0::Concat>(
+        ov::OutputVector{get_dimensions(qk_shape, {0, 1, 2, 3}), suffix_dim}, 0);
+    sinks_5d = std::make_shared<ov::op::v3::Broadcast>(sinks_5d, sinks_target_shape,
+                                                       ov::op::BroadcastType::BIDIRECTIONAL);
+
+    return std::make_shared<ov::op::v0::Concat>(ov::OutputVector{qk, sinks_5d}, -1);
+}
+
+static ov::Output<ov::Node> append_zero_value_for_sinks(const ov::Output<ov::Node> & v) {
+    auto v_shape = std::make_shared<ov::op::v3::ShapeOf>(v, ov::element::i64);
+    auto one = ov::op::v0::Constant::create(ov::element::i64, {1}, {1});
+    auto zero_v_shape = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{get_dimensions(v_shape, {0, 1, 2}), one,
+                                                                              get_dimensions(v_shape, {4})}, 0);
+    auto zero = ov::op::v0::Constant::create(v.get_element_type(), ov::Shape{}, {0.0f});
+    auto zero_v = std::make_shared<ov::op::v3::Broadcast>(zero, zero_v_shape, ov::op::BroadcastType::BIDIRECTIONAL);
+    return std::make_shared<ov::op::v0::Concat>(ov::OutputVector{v, zero_v}, 3);
+}
+
 OutputVector translate_flash_attn_ext(const NodeContext & context) {
-    num_inputs_check(context, 4, 4);
+    num_inputs_check(context, 4, 5);
     auto q_f32 = context.get_input(0);
     auto k = context.get_input(1);
     auto v = context.get_input(2);
     auto mask = context.get_input(3);
+    ov::Output<ov::Node> sinks;
+    bool has_sinks = context.get_input_size() > 4;
+    if (has_sinks) {
+        sinks = context.get_input(4);
+    }
 
     float * params = reinterpret_cast<float *>(context.get_output_op_params());
     float scale = params[0];
@@ -76,10 +113,12 @@ OutputVector translate_flash_attn_ext(const NodeContext & context) {
         const char * dev = ggml_openvino_getenv_str("GGML_OPENVINO_DEVICE");
         return dev != nullptr && std::string(dev) == "GPU";
     }();
-    const bool use_manual_gqa_attention =
-        manual_gqa_enabled && factor > 1 && num_heads_kv > 1 && !context.is_stateful();
+    const bool use_manual_attention =
+        !context.is_stateful() && (has_sinks || (manual_gqa_enabled && factor > 1 && num_heads_kv > 1));
+    FRONT_END_CHECK_IMPLEMENTED(!has_sinks || use_manual_attention,
+                                "OpenVINO FLASH_ATTN_EXT sinks require stateless manual attention");
 
-    if (use_manual_gqa_attention) {
+    if (use_manual_attention) {
         // Q, K, V arrive as [B, n_heads(_kv), S, head_size], where B is the active
         // batch (n_seq_active) and may be > 1 (llama-perplexity, llama-server -np > 1)
         // or dynamic. Reshape to
@@ -96,9 +135,9 @@ OutputVector translate_flash_attn_ext(const NodeContext & context) {
         auto q_5d_shape = ov::op::v0::Constant::create(ov::element::i64, {5},
                                                        std::vector<int64_t>{0, num_heads_kv, factor, -1, head_size});
 
-        auto k_r = std::make_shared<ov::op::v1::Reshape>(k, k_5d_shape, true);
-        auto v_r = std::make_shared<ov::op::v1::Reshape>(v, v_5d_shape, true);
-        auto q_r = std::make_shared<ov::op::v1::Reshape>(q, q_5d_shape, true);
+        ov::Output<ov::Node> k_r = std::make_shared<ov::op::v1::Reshape>(k, k_5d_shape, true);
+        ov::Output<ov::Node> v_r = std::make_shared<ov::op::v1::Reshape>(v, v_5d_shape, true);
+        ov::Output<ov::Node> q_r = std::make_shared<ov::op::v1::Reshape>(q, q_5d_shape, true);
 
         // QK^T → [B, num_heads_kv, factor, S_q, S_k]
         auto qk = std::make_shared<ov::op::v0::MatMul>(q_r, k_r, /*tA=*/false, /*tB=*/true);
@@ -112,6 +151,10 @@ OutputVector translate_flash_attn_ext(const NodeContext & context) {
             std::make_shared<ov::op::v0::Unsqueeze>(mask, ov::op::v0::Constant::create(ov::element::i64, {1}, {2}));
         // mask_unsq1: [B, 1, 1, S_q, S_k] (rank 5)
         ov::Output<ov::Node> qk_masked = std::make_shared<ov::op::v1::Add>(qk_scaled, mask_unsq1);
+        if (has_sinks) {
+            qk_masked = apply_attention_sinks(qk_masked, sinks, num_heads_kv, factor);
+            v_r = append_zero_value_for_sinks(v_r);
+        }
 
         auto softmax = std::make_shared<ov::op::v8::Softmax>(qk_masked, /*axis=*/-1);
 
