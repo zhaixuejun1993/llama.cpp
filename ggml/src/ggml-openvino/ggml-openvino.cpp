@@ -237,8 +237,9 @@ static void ggml_backend_openvino_buffer_set_tensor(ggml_backend_buffer_t buffer
     bool is_full_tensor_set = (offset == 0 && size == ggml_nbytes(tensor) && tensor->view_src == nullptr);
     // 2D tensor (typical weight shape)
     bool is_2d = (tensor->ne[2] == 1 && tensor->ne[3] == 1);
+    bool is_supported_weight_shape = is_2d || tensor->type == GGML_TYPE_MXFP4;
 
-    if (is_weight_buffer && is_full_tensor_set && is_2d) {
+    if (is_weight_buffer && is_full_tensor_set && is_supported_weight_shape) {
         try {
             auto result = process_weight_tensor(tensor, data, tensor->data);
             result.weight_node->set_friendly_name(tensor->name);
@@ -458,8 +459,9 @@ static size_t ggml_backend_openvino_buffer_type_get_alloc_size(ggml_backend_buff
                                                                const ggml_tensor * tensor) {
     GGML_UNUSED(buft);
 
-    // For quantized 2D tensors (weights), we need extra space for extracted data
-    if (ggml_is_quantized(tensor->type) && tensor->ne[2] == 1 && tensor->ne[3] == 1) {
+    // For quantized weight tensors, we need extra space for extracted data.
+    if (ggml_is_quantized(tensor->type) &&
+        ((tensor->ne[2] == 1 && tensor->ne[3] == 1) || tensor->type == GGML_TYPE_MXFP4)) {
         ggml_openvino_extracted_layout layout = ggml_openvino_get_extracted_layout(tensor);
         if (layout.total_size > 0) {
             // GGML_LOG_DEBUG("%s: tensor %s needs %zu bytes (original %zu, extracted: weights=%zu scales=%zu zp=%zu)\n",
@@ -1076,7 +1078,8 @@ static bool is_op_unsupported_case(const ggml_tensor * op) {
             return true;
         }
 
-        if (mul_mat_id_requires_large_tmp(op)) {
+        if (mul_mat_id_requires_large_tmp(op) &&
+            !(op->src[0] != nullptr && op->src[0]->type == GGML_TYPE_MXFP4)) {
             return true;
         }
         break;
@@ -1172,7 +1175,8 @@ static bool ggml_backend_openvino_device_supports_op(ggml_backend_dev_t dev, con
 
     static std::unordered_set<ggml_type> supported_types{
         GGML_TYPE_F32,  GGML_TYPE_F16,  GGML_TYPE_BF16, GGML_TYPE_I64,  GGML_TYPE_I32,  GGML_TYPE_Q4_0,
-        GGML_TYPE_Q4_1, GGML_TYPE_Q4_K, GGML_TYPE_Q5_1, GGML_TYPE_Q5_K, GGML_TYPE_Q8_0, GGML_TYPE_Q6_K};
+        GGML_TYPE_Q4_1, GGML_TYPE_Q4_K, GGML_TYPE_Q5_1, GGML_TYPE_Q5_K, GGML_TYPE_Q8_0, GGML_TYPE_Q6_K,
+        GGML_TYPE_MXFP4};
 
     // derive supported op sets from the op_table map, keys in
     // the map use the full macro name (e.g. "GGML_OP_ADD"), while
@@ -1270,7 +1274,9 @@ static bool ggml_backend_openvino_device_supports_op(ggml_backend_dev_t dev, con
             // GGML_LOG_WARN("OpenVINO backend does not support tensor type %s\n", ggml_type_name(src->type));
             return false;
         }
-        if (ggml_is_quantized(src->type) && src->ne[2] != 1) {
+        const bool is_supported_3d_mxfp4_moe = op->op == GGML_OP_MUL_MAT_ID && i == 0 &&
+                                               src->type == GGML_TYPE_MXFP4;
+        if (ggml_is_quantized(src->type) && src->ne[2] != 1 && !is_supported_3d_mxfp4_moe) {
             // GGML_LOG_WARN("OpenVINO backend does not support 3D quantized tensors\n");
             return false;
         }
