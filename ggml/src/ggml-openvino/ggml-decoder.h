@@ -156,6 +156,8 @@ public:
 
     virtual std::vector<std::string> get_output_names(int node_idx) const override;
 
+    virtual std::vector<std::string> get_output_aliases(int node_idx) const override;
+
     virtual const std::string & get_op_type() const override;
 
     virtual const std::string & get_op_type(int node_idx) const override;
@@ -293,7 +295,8 @@ public:
     }
 
     inline static bool is_kv_idx(const ggml_tensor * tensor, const ggml_tensor * op) {
-        return op->op == GGML_OP_SET_ROWS && op->src[1] == tensor;
+        return op->op == GGML_OP_SET_ROWS && op->src[1] == tensor && tensor->ne[1] == 1 && tensor->ne[2] == 1 &&
+               tensor->ne[3] == 1;
     }
 
     inline static bool is_output_idx(const ggml_tensor * tensor, const ggml_tensor * op) {

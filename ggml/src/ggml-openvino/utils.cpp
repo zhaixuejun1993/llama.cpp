@@ -807,7 +807,7 @@ ov::Tensor convert_ggml_input_to_ov(std::shared_ptr<GgmlOvDecoder> ggml_decoder,
         return *sliced;
     }
 
-    if (ggml_tensor->extra != nullptr && !ggml_decoder->is_splited_model()) {
+    if (ggml_tensor->extra != nullptr && ggml_tensor->view_src == nullptr && !ggml_decoder->is_splited_model()) {
         auto * extra_base = static_cast<ggml_openvino_extra_base *>(ggml_tensor->extra);
         if (extra_base->type == ggml_openvino_extra_base::Type::TENSOR) {
             // GGML_LOG_DEBUG("Using ggml_tensor->extra as ov::Tensor for input: %s\n", name.c_str());
@@ -818,15 +818,9 @@ ov::Tensor convert_ggml_input_to_ov(std::shared_ptr<GgmlOvDecoder> ggml_decoder,
 
     // GGML_LOG_DEBUG("Converting ggml tensor to ov::Tensor for input: %s\n", name.c_str());
     auto * input_data = ggml_tensor->data;
-    ov::Shape input_shape;
-    if (ggml_tensor->op == GGML_OP_VIEW && !ggml_decoder->is_splited_model()) {
-        // This case is added to make test-backend-ops work
-        input_shape = ggml_decoder->get_shape(ggml_tensor->view_src);
-    } else {
-        input_shape = ggml_decoder->get_shape(ggml_tensor);
-    }
+    ov::Shape input_shape = ggml_decoder->get_shape(ggml_tensor);
 
-    if (ggml_decoder->is_splited_model() && !ggml_is_contiguous(ggml_tensor)) {
+    if (ggml_tensor->view_src != nullptr && !ggml_is_contiguous(ggml_tensor)) {
         return make_contiguous_split_input_tensor(ggml_decoder, ggml_tensor, input_shape);
     }
 

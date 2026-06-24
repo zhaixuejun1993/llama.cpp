@@ -120,7 +120,7 @@ public:
             auto view_it = m_tensor_map->find(m_input_names[idx]);
             if (!base_name.empty() && view_it != m_tensor_map->end()) {
                 auto base_it = m_tensor_map->find(base_name);
-                if (base_it != m_tensor_map->end() &&
+                if (base_it == m_tensor_map->end() ||
                     view_it->second.get_node_shared_ptr() != base_it->second.get_node_shared_ptr()) {
                     return view_it->second;
                 }

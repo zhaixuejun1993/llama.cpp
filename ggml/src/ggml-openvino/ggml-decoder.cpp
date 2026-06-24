@@ -106,14 +106,6 @@ void GgmlOvDecoder::set_input_output() {
         auto node_name = std::string(node->name);
         auto node_output_name = node_name;
         auto * node_output = node;
-        if (node->op == GGML_OP_SET_ROWS) {
-            // SET_ROWS updates the tensor in place. For later ov op that uses the
-            // the view_src of SET_ROWS, we need to make sure they get the updated tensor
-            // by putting the view_src name in the tensor_map in
-            // <openvino>/src/frontends/ggml/src/translate_session.cpp
-            node_output_name = std::string(node->view_src->name);
-            node_output = node->view_src;
-        }
 
         current_node_info.node = node;
         current_node_info.node_name = node_name;
@@ -655,8 +647,6 @@ void GgmlOvDecoder::compute_model_inputs() {
                 continue;
             }
 
-            m_inputs[src_name] = src;
-
             ggml_backend_buffer * buffer = src->buffer;
             // GGML_BACKEND_BUFFER_USAGE_ANY are kv caches
             if (buffer->usage == GGML_BACKEND_BUFFER_USAGE_ANY) {
@@ -665,11 +655,17 @@ void GgmlOvDecoder::compute_model_inputs() {
                     m_model_params.kv_names.push_back(src_name);
                 }
             }
-            // Resolve nested VIEW nodes by following src[0] until the first non-VIEW tensor.
-            while (src->op == GGML_OP_VIEW && src->src[0] != nullptr) {
-                src = src->src[0];
-                src_name = std::string(src->name);
+
+            const bool keep_view_input = src->op == GGML_OP_VIEW &&
+                                         ((node->op == GGML_OP_SET_ROWS && node->src[1] == src) ||
+                                          (node->op == GGML_OP_MUL_MAT_ID && node->src[2] == src));
+            if (!keep_view_input) {
+                while (src->op == GGML_OP_VIEW && src->src[0] != nullptr) {
+                    src = src->src[0];
+                    src_name = std::string(src->name);
+                }
             }
+
             m_inputs[src_name] = src;
             ov::PartialShape param_shape = get_graph_input_shape(node, src, m_node_dynamic_dims[src]);
             auto param_node = std::make_shared<ov::op::v0::Parameter>(get_ov_type(src), param_shape);
@@ -686,16 +682,15 @@ void GgmlOvDecoder::compute_model_outputs() {
     for (int node_n = 0; node_n < m_cgraph->n_nodes; node_n++) {
         auto * cur_node = m_cgraph->nodes[node_n];
         // if the node op is NONE means this node is not used at all, we can skip it directly without adding to model outputs.
-        if (cur_node->op == GGML_OP_NONE || cur_node->op == GGML_OP_VIEW || cur_node->op == GGML_OP_RESHAPE) {
+        if (cur_node->op == GGML_OP_NONE) {
             continue;
         }
         auto cur_node_use_count = m_cgraph->use_counts[ggml_hash_find(&m_cgraph->visited_hash_set, cur_node)];
-        if (cur_node_use_count == 0) {
-            // The output of SET_ROWS is the view_src tensor, which is updated in place. We should use the view_src name as the output name to make sure it can be correctly matched with the later ops that use the view_src.
-            if (cur_node != nullptr && cur_node->op == GGML_OP_SET_ROWS) {
-                cur_node = cur_node->view_src;
-            }
-        } else {
+        if ((cur_node->op == GGML_OP_VIEW || cur_node->op == GGML_OP_RESHAPE) && cur_node_use_count != 0 &&
+            strstr(cur_node->name, "top_k") == nullptr) {
+            continue;
+        }
+        if (cur_node_use_count != 0) {
             int input_use_count = 0;
             for (int i = 0; i < m_cgraph->n_nodes; i++) {
                 ggml_tensor * node = m_cgraph->nodes[i];
@@ -1231,6 +1226,14 @@ std::vector<std::string> GgmlOvDecoder::get_output_names(int node_idx) const {
     return {m_node_info_list[node_idx].node_output_name};
 }
 
+std::vector<std::string> GgmlOvDecoder::get_output_aliases(int node_idx) const {
+    const auto * node = m_node_info_list[node_idx].node;
+    if (node != nullptr && node->op == GGML_OP_SET_ROWS && node->view_src != nullptr) {
+        return {std::string(node->view_src->name)};
+    }
+    return {};
+}
+
 const std::string & GgmlOvDecoder::get_op_name() const {
     static const std::string unknown_name = "UNKNOWN_OP_NAME";
     return unknown_name;
@@ -1388,10 +1391,6 @@ void GgmlOvDecoder::compute_node_dynamic_dims() {
             // identifies the dynamic dim even when two dims share the same size.
             m_node_dynamic_dims[node] = -1;
             if (m_node_dynamic_dims[node->src[0]] != -1) {
-                if (node->src[0]->op == GGML_OP_NONE && node->src[0]->org_src == nullptr) {
-                    m_node_dynamic_dims[node] = m_node_dynamic_dims[node->src[0]];
-                    break;
-                }
                 auto dynamic_dim_idx = m_node_dynamic_dims[node->src[0]];
                 auto dynamic_dim_value = node->src[0]->ne[dynamic_dim_idx];
                 auto dynamic_dim_stride =
