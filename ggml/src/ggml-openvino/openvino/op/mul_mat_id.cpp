@@ -77,8 +77,9 @@ ov::Output<ov::Node> translate_mul_mat_id_mxfp4_packed(const NodeContext & conte
     e8m0_lut[0] = std::numeric_limits<float>::min() / 2.0f;
     e8m0_lut[255] = std::numeric_limits<float>::quiet_NaN();
 
-    auto f4_lut = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{f4e2m1_lut.size()}, f4e2m1_lut);
-    auto scale_lut = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{e8m0_lut.size()}, e8m0_lut);
+    const auto compute_type = ov::element::f16;
+    auto f4_lut = ov::op::v0::Constant::create(compute_type, ov::Shape{f4e2m1_lut.size()}, f4e2m1_lut);
+    auto scale_lut = ov::op::v0::Constant::create(compute_type, ov::Shape{e8m0_lut.size()}, e8m0_lut);
 
     auto selected_packed_weights = std::make_shared<ov::op::v8::Gather>(expert_weights, ids, gather_axis);
     auto scale_byte = slice_axis(selected_packed_weights, 4, 0, 1);
@@ -89,12 +90,12 @@ ov::Output<ov::Node> translate_mul_mat_id_mxfp4_packed(const NodeContext & conte
         qs, ov::op::v0::Constant::create(ov::element::u8, ov::Shape{}, {4}), ov::op::AutoBroadcastType::NUMPY);
     auto nibbles = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{low, high_shift}, 4);
     auto nibble_indices = std::make_shared<ov::op::v0::Convert>(nibbles, ov::element::i32);
-    auto weights_f32 = std::make_shared<ov::op::v8::Gather>(f4_lut, nibble_indices, gather_axis);
+    auto weights = std::make_shared<ov::op::v8::Gather>(f4_lut, nibble_indices, gather_axis);
 
     auto scale_indices = std::make_shared<ov::op::v0::Convert>(scale_byte, ov::element::i32);
-    auto scales_f32 = std::make_shared<ov::op::v8::Gather>(scale_lut, scale_indices, gather_axis);
-    ov::Output<ov::Node> selected_weights = std::make_shared<ov::op::v1::Multiply>(weights_f32, scales_f32,
-                                                                                  ov::op::AutoBroadcastType::NUMPY);
+    auto scales = std::make_shared<ov::op::v8::Gather>(scale_lut, scale_indices, gather_axis);
+    ov::Output<ov::Node> selected_weights =
+        std::make_shared<ov::op::v1::Multiply>(weights, scales, ov::op::AutoBroadcastType::NUMPY);
 
     auto ids_shape = std::make_shared<ov::op::v3::ShapeOf>(ids, ov::element::i64);
     auto selected_weights_target_dims = std::make_shared<ov::op::v0::Concat>(
@@ -111,6 +112,9 @@ ov::Output<ov::Node> translate_mul_mat_id_mxfp4_packed(const NodeContext & conte
         0);
     ov::Output<ov::Node> acts_broadcasted =
         std::make_shared<ov::op::v3::Broadcast>(activations, acts_target_dims, ov::op::BroadcastType::BIDIRECTIONAL);
+    if (acts_broadcasted.get_element_type() != compute_type) {
+        acts_broadcasted = std::make_shared<ov::op::v0::Convert>(acts_broadcasted, compute_type);
+    }
 
     auto activations_expanded = std::make_shared<ov::op::v0::Unsqueeze>(acts_broadcasted, const_i64({2}));
     ov::Output<ov::Node> result =
