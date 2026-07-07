@@ -79,7 +79,7 @@ OutputVector translate_soft_max(const NodeContext & context) {
 
         // For stateful
         std::string mask_name = "KQ_mask_sliced";
-        if (context.get_input_names()[1].find("swa") != std::string::npos) {
+        if (context.get_input_display_name(1).find("swa") != std::string::npos) {
             mask_name = "KQ_mask_swa_sliced";
         }
         if (context.has_input(mask_name)) {

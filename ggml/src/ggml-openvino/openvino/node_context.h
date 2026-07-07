@@ -33,6 +33,8 @@ public:
 
     const std::vector<std::string> & get_input_names() const { return m_input_names; }
 
+    std::string get_input_display_name(size_t index) const { return m_decoder->get_tensor_display_name(m_input_names[index]); }
+
     size_t get_input_size() const override { return m_decoder->get_input_size(m_node_idx); }
 
     ov::element::Type get_input_type(size_t index) const {
@@ -79,7 +81,7 @@ public:
         return m_decoder->input_has_org_src(m_node_idx, m_input_names[index]);
     }
 
-    std::string get_output_name() const { return m_output_names[0]; }
+    std::string get_output_name() const { return m_decoder->get_op_name(m_node_idx); }
 
     PartialShape get_output_shape() const { return m_decoder->get_output_shape(m_node_idx); }
 
@@ -158,6 +160,9 @@ public:
             auto view_it = m_tensor_map->find(m_input_names[idx]);
             if (!base_name.empty() && view_it != m_tensor_map->end()) {
                 auto base_it = m_tensor_map->find(base_name);
+                if (base_it == m_tensor_map->end()) {
+                    return view_it->second;
+                }
                 if (base_it != m_tensor_map->end() &&
                     view_it->second.get_node_shared_ptr() != base_it->second.get_node_shared_ptr()) {
                     return view_it->second;

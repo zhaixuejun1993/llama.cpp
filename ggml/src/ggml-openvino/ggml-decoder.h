@@ -54,6 +54,7 @@ class GgmlOvDecoder : public ov::frontend::ggml::GgmlDecoder {
 public:
     struct NodeInfo {
         ggml_tensor * node;
+        std::string node_key;
         std::string node_name;
         std::string node_op_type;
         std::map<std::string, ggml_tensor *> node_inputs;
@@ -156,6 +157,8 @@ public:
 
     virtual std::vector<std::string> get_input_names(int node_idx) const override;
 
+    virtual std::string get_tensor_display_name(const std::string & name) const override;
+
     virtual ov::PartialShape get_output_shape(int node_idx) const override;
 
     virtual ov::element::Type get_output_type(int node_idx) const override;
@@ -253,6 +256,16 @@ public:
     static std::map<std::string, std::shared_ptr<ov::Node>> create_weight_nodes(ggml_cgraph * cgraph,
                                                                                 bool naive = false);
 
+    static int get_node_idx(const ggml_cgraph * cgraph, const ggml_tensor * tensor);
+
+    static std::string make_tensor_key(const ggml_tensor * tensor,
+                                       int node_idx,
+                                       const std::string & display_name);
+
+    static std::string get_tensor_key(const ggml_cgraph * cgraph,
+                                      const ggml_tensor * tensor,
+                                      const std::string & display_name);
+
     const ggml_tensor * get_tensor_used_op(const ggml_tensor * tensor) const;
 
     const ggml_tensor * get_tensor_from_name(const std::string & name) const;
@@ -319,7 +332,7 @@ public:
                op->src[1]->op == GGML_OP_NONE;
     }
 
-    std::string get_graph_input_ov_name(const ggml_tensor * tensor, const ggml_tensor * op) {
+    std::string get_graph_input_ov_name(const ggml_tensor * tensor, const ggml_tensor * op) const {
         if (is_inp_pos(tensor, op)) {
             return "inp_pos";
         }
@@ -334,6 +347,14 @@ public:
 
 private:
     void set_input_output();
+    std::string get_tensor_display_name(const ggml_tensor * tensor, const ggml_tensor * op = nullptr) const;
+    std::string get_tensor_key(const ggml_tensor * tensor, const ggml_tensor * op = nullptr) const;
+    bool is_model_weight(const ggml_tensor * tensor, const ggml_tensor * op = nullptr) const;
+    void register_tensor_key(const ggml_tensor * tensor, const ggml_tensor * op = nullptr);
+    void register_duplicate_name_diagnostics(const std::string & map_name,
+                                             const std::string & display_name,
+                                             const std::string & key,
+                                             const ggml_tensor * tensor) const;
     int compute_op_case(const ggml_tensor * node) const;
     bool node_is_used_as_src(const int node_idx);
     void compute_model_inputs();
@@ -353,6 +374,7 @@ private:
     std::map<std::string, ggml_tensor *> m_model_outputs;
     std::vector<std::string> m_model_output_names;
     std::vector<NodeInfo> m_node_info_list;
+    std::map<std::string, std::string> m_key_display_names;
     std::map<ggml_tensor *, int> m_node_dynamic_dims;
 
     ModelParams m_model_params;

@@ -50,7 +50,7 @@ OutputVector translate_flash_attn_ext(const NodeContext & context) {
 
     // For stateful
     std::string mask_name = "KQ_mask_sliced";
-    if (context.get_input_names()[3].find("swa") != std::string::npos) {
+    if (context.get_input_display_name(3).find("swa") != std::string::npos) {
         mask_name = "KQ_mask_swa_sliced";
     }
     if (context.has_input(mask_name)) {

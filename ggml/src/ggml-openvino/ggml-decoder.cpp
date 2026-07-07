@@ -29,6 +29,7 @@
 #include <openvino/runtime/tensor.hpp>
 #include <ostream>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -99,6 +100,9 @@ GgmlOvDecoder::GgmlOvDecoder(ggml_cgraph * cgraph, std::map<std::string, std::sh
 }
 
 void GgmlOvDecoder::set_input_output() {
+    m_node_info_list.clear();
+    m_key_display_names.clear();
+
     for (int node_n = 0; node_n < m_cgraph->n_nodes; node_n++) {
         auto node = m_cgraph->nodes[node_n];
 
@@ -106,21 +110,21 @@ void GgmlOvDecoder::set_input_output() {
         auto node_name = std::string(node->name);
 
         current_node_info.node = node;
+        current_node_info.node_key = get_tensor_key(node);
         current_node_info.node_name = node_name;
         current_node_info.node_op_case = 0;
         current_node_info.data_addr = node->data;
+        register_tensor_key(node);
 
         for (int i = 0; i < GGML_MAX_SRC; i++) {
             auto * src = node->src[i];
             if (src == nullptr) {
                 continue;
             }
-            auto src_name = std::string(src->name);
-            if (src->flags & GGML_TENSOR_FLAG_INPUT) {
-                src_name = get_graph_input_ov_name(src, node);
-            }
+            auto src_name = get_tensor_key(src, node);
             current_node_info.node_inputs[src_name] = src;
             current_node_info.node_inputs_names.push_back(src_name);
+            register_tensor_key(src, node);
 
             if (src->op == GGML_OP_VIEW) {
                 // Traverse upward through nested VIEW operations
@@ -128,11 +132,9 @@ void GgmlOvDecoder::set_input_output() {
                 auto current = src;
 
                 while (current != nullptr) {
-                    auto current_name = std::string(current->name);
-                    if (current->flags & GGML_TENSOR_FLAG_INPUT) {
-                        current_name = get_graph_input_ov_name(current, node);
-                    }
+                    auto current_name = get_tensor_key(current, node);
                     view_chain.emplace_back(current_name, current);
+                    register_tensor_key(current, node);
                     // If current src is also a VIEW, continue traversing
                     if (current->src[0] != nullptr && current->src[0]->op == GGML_OP_VIEW) {
                         current = current->src[0];
@@ -148,6 +150,65 @@ void GgmlOvDecoder::set_input_output() {
 
         m_node_info_list.push_back(current_node_info);
     }
+}
+
+int GgmlOvDecoder::get_node_idx(const ggml_cgraph * cgraph, const ggml_tensor * tensor) {
+    for (int i = 0; i < cgraph->n_nodes; i++) {
+        if (cgraph->nodes[i] == tensor) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+std::string GgmlOvDecoder::make_tensor_key(const ggml_tensor * tensor,
+                                           int node_idx,
+                                           const std::string & display_name) {
+    std::ostringstream key;
+    key << display_name << "#ov" << node_idx << ":0x" << std::hex << reinterpret_cast<uintptr_t>(tensor);
+    return key.str();
+}
+
+std::string GgmlOvDecoder::get_tensor_key(const ggml_cgraph * cgraph,
+                                          const ggml_tensor * tensor,
+                                          const std::string & display_name) {
+    return make_tensor_key(tensor, get_node_idx(cgraph, tensor), display_name);
+}
+
+std::string GgmlOvDecoder::get_tensor_display_name(const ggml_tensor * tensor, const ggml_tensor * op) const {
+    if (op != nullptr && is_rope_freqs_weight(tensor, op)) {
+        return "rope_freqs.weight";
+    }
+    if (op != nullptr && (tensor->flags & GGML_TENSOR_FLAG_INPUT)) {
+        return get_graph_input_ov_name(tensor, op);
+    }
+    return std::string(tensor->name);
+}
+
+std::string GgmlOvDecoder::get_tensor_key(const ggml_tensor * tensor, const ggml_tensor * op) const {
+    return get_tensor_key(m_cgraph, tensor, get_tensor_display_name(tensor, op));
+}
+
+bool GgmlOvDecoder::is_model_weight(const ggml_tensor * tensor, const ggml_tensor * op) const {
+    return m_model_weights.find(get_tensor_key(tensor, op)) != m_model_weights.end();
+}
+
+void GgmlOvDecoder::register_tensor_key(const ggml_tensor * tensor, const ggml_tensor * op) {
+    const auto display_name = get_tensor_display_name(tensor, op);
+    const auto key = get_tensor_key(m_cgraph, tensor, display_name);
+    m_key_display_names[key] = display_name;
+    register_duplicate_name_diagnostics("tensor", display_name, key, tensor);
+}
+
+void GgmlOvDecoder::register_duplicate_name_diagnostics(const std::string & map_name,
+                                                        const std::string & display_name,
+                                                        const std::string & key,
+                                                        const ggml_tensor * tensor) const {
+    if (!ggml_openvino_getenv_int("GGML_OPENVINO_DEBUG_DUP_NAMES")) {
+        return;
+    }
+    GGML_LOG_INFO("OpenVINO key map: map=%s display=%s key=%s tensor=%p\n", map_name.c_str(), display_name.c_str(),
+                  key.c_str(), static_cast<const void *>(tensor));
 }
 
 int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
@@ -248,7 +309,7 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
                 // throw std::runtime_error("Unsupported VIEW case");
             }
             op_case = 0;
-            if (m_model_is_splitted && m_model_inputs.find(std::string(src->name)) != m_model_inputs.end()) {
+            if (m_model_is_splitted && m_model_inputs.find(get_tensor_key(src, node)) != m_model_inputs.end()) {
                 op_case = 0;
             }
         }
@@ -591,11 +652,12 @@ void GgmlOvDecoder::compute_model_inputs() {
         ggml_tensor * node = m_cgraph->nodes[i];
         // the node op is NONE means this node maybe as input of later nodes, we should add it to model inputs for this node.
         if (node->op == GGML_OP_NONE && node_is_used_as_src(i)) {
-            std::string node_name(node->name);
-            if (m_model_weights.find(node_name) == m_model_weights.end()) {
+            std::string node_name = get_tensor_key(node);
+            if (!is_model_weight(node)) {
                 m_inputs[node_name] = node;
                 m_model_inputs[node_name] = {get_ov_type(node),
                                              get_graph_input_shape(node, nullptr, m_node_dynamic_dims[node])};
+                register_duplicate_name_diagnostics("model_input", get_tensor_display_name(node), node_name, node);
             }
             continue;
         }
@@ -604,11 +666,8 @@ void GgmlOvDecoder::compute_model_inputs() {
             if (src == nullptr) {
                 continue;
             }
-            std::string src_name = std::string(src->name);
-            if (src->flags & GGML_TENSOR_FLAG_INPUT) {
-                src_name = get_graph_input_ov_name(src, node);
-            }
-            if (m_model_weights.find(src_name) != m_model_weights.end()) {
+            std::string src_name = get_tensor_key(src, node);
+            if (is_model_weight(src, node)) {
                 continue;
             }
 
@@ -639,11 +698,12 @@ void GgmlOvDecoder::compute_model_inputs() {
             // Resolve nested VIEW nodes by following src[0] until the first non-VIEW tensor.
             while (src->op == GGML_OP_VIEW && src->src[0] != nullptr) {
                 src = src->src[0];
-                src_name = std::string(src->name);
+                src_name = get_tensor_key(src, node);
             }
             m_inputs[src_name] = src;
             m_model_inputs[src_name] = {get_ov_type(src),
                                         get_graph_input_shape(node, src, m_node_dynamic_dims[src])};
+            register_duplicate_name_diagnostics("model_input", get_tensor_display_name(src, node), src_name, src);
         }
     }
 }
@@ -653,6 +713,7 @@ void GgmlOvDecoder::compute_model_outputs() {
     m_model_output_names.clear();
     for (int node_n = 0; node_n < m_cgraph->n_nodes; node_n++) {
         auto * cur_node = m_cgraph->nodes[node_n];
+        auto * producer_node = cur_node;
         // if the node op is NONE means this node is not used at all, we can skip it directly without adding to model outputs.
         if (cur_node->op == GGML_OP_NONE || cur_node->op == GGML_OP_VIEW || cur_node->op == GGML_OP_RESHAPE) {
             continue;
@@ -678,9 +739,11 @@ void GgmlOvDecoder::compute_model_outputs() {
             }
         }
         if (cur_node != nullptr) {
-            std::string cur_node_name(cur_node->name);
+            std::string cur_node_name = get_tensor_key(cur_node, producer_node);
             m_model_outputs[cur_node_name] = cur_node;
             m_model_output_names.push_back(cur_node_name);
+            register_duplicate_name_diagnostics("model_output", get_tensor_display_name(cur_node, producer_node),
+                                                cur_node_name, cur_node);
         }
     }
 }
@@ -740,13 +803,14 @@ std::map<std::string, std::shared_ptr<ov::Node>> GgmlOvDecoder::create_weight_no
             if (is_rope_freqs_weight(src, node)) {
                 src_name = "rope_freqs.weight";
             }
+            std::string src_key = get_tensor_key(cgraph, src, src_name);
             if (!src->view_src) {
                 ggml_backend_buffer * buffer = src->buffer;
                 if (buffer->usage == GGML_BACKEND_BUFFER_USAGE_WEIGHTS || ggml_is_quantized(src->type)) {
-                    if (model_weights.find(src_name) == model_weights.end()) {
+                    if (model_weights.find(src_key) == model_weights.end()) {
                         auto weight_node = create_weight_node(src, naive);
                         weight_node->set_friendly_name(src_name);
-                        model_weights[src_name] = weight_node;
+                        model_weights[src_key] = weight_node;
                     }
                 }
             }
@@ -1185,7 +1249,7 @@ std::string GgmlOvDecoder::get_view_input_name(int node_idx, const std::string &
     auto it = m_node_info_list[node_idx].node_inputs_views.find(name);
     if (it != m_node_info_list[node_idx].node_inputs_views.end()) {
         if (view_index < it->second.size()) {
-            return it->second[view_index].second->name;
+            return it->second[view_index].first;
         }
     }
     return "";
@@ -1197,7 +1261,7 @@ std::string GgmlOvDecoder::get_view_input_src_name(int node_idx, const std::stri
         if (view_index < it->second.size()) {
             auto * view_tensor = it->second[view_index].second;
             if (view_tensor && view_tensor->src[0]) {
-                return view_tensor->src[0]->name;
+                return get_tensor_key(view_tensor->src[0], view_tensor);
             }
         }
     }
@@ -1218,6 +1282,11 @@ size_t GgmlOvDecoder::get_input_size(int node_idx) const {
 
 std::vector<std::string> GgmlOvDecoder::get_input_names(int node_idx) const {
     return m_node_info_list[node_idx].node_inputs_names;
+}
+
+std::string GgmlOvDecoder::get_tensor_display_name(const std::string & name) const {
+    auto display_it = m_key_display_names.find(name);
+    return display_it == m_key_display_names.end() ? name : display_it->second;
 }
 
 ov::PartialShape GgmlOvDecoder::get_output_shape(int node_idx) const {
@@ -1252,13 +1321,13 @@ size_t GgmlOvDecoder::get_output_type_size(int node_idx) const {
 }
 
 std::vector<std::string> GgmlOvDecoder::get_output_names(int node_idx) const {
-    return {m_node_info_list[node_idx].node_name};
+    return {m_node_info_list[node_idx].node_key};
 }
 
 std::vector<std::string> GgmlOvDecoder::get_output_aliases(int node_idx) const {
     const auto * node = m_node_info_list[node_idx].node;
     if (node != nullptr && node->op == GGML_OP_SET_ROWS && node->view_src != nullptr) {
-        return {std::string(node->view_src->name)};
+        return {get_tensor_key(node->view_src, node)};
     }
     return {};
 }

@@ -89,6 +89,8 @@ public:
 
     virtual std::vector<std::string> get_input_names(int node_idx) const = 0;
 
+    virtual std::string get_tensor_display_name(const std::string & name) const = 0;
+
     virtual PartialShape get_output_shape(int node_idx) const = 0;
 
     virtual element::Type get_output_type(const int node_idx) const = 0;

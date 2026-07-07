@@ -680,8 +680,12 @@ bool is_model_splitted(ggml_cgraph * cgraph) {
             ggml_tensor * src = node->src[j];
             // the src is also not the model weights, we think the model is splitted.
             // the src is also not in model leafs, we think the model is splitted.
+            std::string src_name(src != nullptr ? src->name : "");
+            if (src != nullptr && GgmlOvDecoder::is_rope_freqs_weight(src, node)) {
+                src_name = "rope_freqs.weight";
+            }
             if (src != nullptr && model_nodes.find(src) == model_nodes.end() &&
-                model_weights.find(std::string(src->name)) == model_weights.end() && !model_leafs.empty() == false &&
+                model_weights.find(GgmlOvDecoder::get_tensor_key(cgraph, src, src_name)) == model_weights.end() && !model_leafs.empty() == false &&
                 model_leafs.find(src) == model_leafs.end()) {
                 if (GgmlOvDecoder::is_inp_tok(src, node)) {
                     return false;
@@ -708,7 +712,10 @@ enum ggml_status naive_compute(ggml_cgraph * cgraph,
                                ov::Core & core,
                                const std::string & device,
                                const ov::AnyMap & config) {
-    if (cgraph->n_nodes == 1 && (cgraph->nodes[0]->op == GGML_OP_NONE || cgraph->nodes[0]->op == GGML_OP_VIEW)) {
+    if (cgraph->n_nodes == 1 &&
+        (cgraph->nodes[0]->op == GGML_OP_NONE || cgraph->nodes[0]->op == GGML_OP_VIEW ||
+         cgraph->nodes[0]->op == GGML_OP_RESHAPE || cgraph->nodes[0]->op == GGML_OP_PERMUTE ||
+         cgraph->nodes[0]->op == GGML_OP_TRANSPOSE)) {
         return GGML_STATUS_SUCCESS;
     }
 
