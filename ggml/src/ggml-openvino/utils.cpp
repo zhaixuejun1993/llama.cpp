@@ -6,6 +6,7 @@
 #include "ggml.h"
 #include "openvino/frontend.h"
 #include "openvino/input_model.h"
+#include "../../../src/llama-mem-footprint.h"
 
 #include <algorithm>
 #include <cassert>
@@ -178,6 +179,7 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
     }
 
     auto start_time = ggml_time_us();
+    llama_mem_footprint_print("openvino dynamic: begin graph compute");
 
     std::shared_ptr<GgmlOvDecoder> ggml_decoder;
     std::shared_ptr<ov::InferRequest> infer_request;
@@ -227,6 +229,7 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
                 cache_hit = old_m_params.can_reuse_dynamically(m_params);
             }
         }
+        llama_mem_footprint_print(cache_hit ? "openvino dynamic: after cache lookup hit" : "openvino dynamic: after cache lookup miss");
 
         std::vector<std::string> ov_input_names;
         std::vector<std::string> ov_output_names;
@@ -288,6 +291,7 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
             decoder_end_time = ggml_time_us();
             conversion_end_time = decoder_end_time;
             compile_end_time = decoder_end_time;
+            llama_mem_footprint_print("openvino dynamic: cache hit after decoder update");
         } else {
             if (cache_enabled) {
                 std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
@@ -295,16 +299,22 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
             }
 
             std::shared_ptr<ov::Model> model;
+            llama_mem_footprint_print("openvino dynamic: before create_weight_nodes actual");
             auto model_weights = GgmlOvDecoder::create_weight_nodes(cgraph);
+            llama_mem_footprint_print("openvino dynamic: after create_weight_nodes actual");
 
+            llama_mem_footprint_print("openvino dynamic: before GgmlOvDecoder create");
             ggml_decoder = std::make_shared<GgmlOvDecoder>(cgraph, m_params, c_params, model_weights, is_static,
                                                            stateful, model_is_splitted);
             decoder_end_time = ggml_time_us();
+            llama_mem_footprint_print("openvino dynamic: after GgmlOvDecoder create");
 
             auto input_model = std::make_shared<ov::frontend::ggml::InputModel>(ggml_decoder);
+            llama_mem_footprint_print("openvino dynamic: before FrontEnd::convert");
             model = ov::frontend::ggml::FrontEnd::convert(input_model);
             ggml_decoder->clear_model_weights();
             conversion_end_time = ggml_time_us();
+            llama_mem_footprint_print("openvino dynamic: after FrontEnd::convert");
 
             if (ggml_openvino_getenv_int("GGML_OPENVINO_DUMP_IR")) {
                 char timestamped_filename[64];
@@ -315,13 +325,17 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
 
             ov::CompiledModel compiled_model;
             auto remote_context = ggml_openvino_get_remote_context();
+            llama_mem_footprint_print("openvino dynamic: before compile_model");
             if (remote_context.has_value()) {
                 compiled_model = core.compile_model(model, remote_context.value(), config);
             } else {
                 compiled_model = core.compile_model(model, device, config);
             }
+            llama_mem_footprint_print("openvino dynamic: after compile_model");
             compile_end_time = ggml_time_us();
+            llama_mem_footprint_print("openvino dynamic: before create_infer_request");
             infer_request = std::make_shared<ov::InferRequest>(compiled_model.create_infer_request());
+            llama_mem_footprint_print("openvino dynamic: after create_infer_request");
             entry->ptr = ggml_decoder;
 
             for (const auto & ov_param : model->get_parameters()) {
@@ -349,6 +363,7 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
             }
         }
 
+        llama_mem_footprint_print("openvino dynamic: before bind inputs");
         for (size_t i = 0; i < ov_input_names.size(); i++) {
             auto param_name = ov_input_names[i];
             auto input_tensor = get_ov_input_tensor(ggml_decoder, param_name);
@@ -358,7 +373,9 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
                 print_input_tensor_info(param_name, input_tensor);
             }
         }
+        llama_mem_footprint_print("openvino dynamic: after bind inputs");
 
+        llama_mem_footprint_print("openvino dynamic: before bind outputs");
         for (size_t i = 0; i < ov_output_names.size(); i++) {
             auto * ggml_tensor = ggml_decoder->get_model_outputs().at(ov_output_names[i]);
             if (ggml_nbytes(ggml_tensor) == 0) {
@@ -367,10 +384,13 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
             auto output_tensor = create_ov_output_tensor(ggml_decoder, infer_request, i, ggml_tensor);
             infer_request->set_output_tensor(i, output_tensor);
         }
+        llama_mem_footprint_print("openvino dynamic: after bind outputs");
 
         ov_raw_infer_start = ggml_time_us();
+        llama_mem_footprint_print("openvino dynamic: before infer");
         infer_request->infer();
         infer_end_time = ggml_time_us();
+        llama_mem_footprint_print("openvino dynamic: after infer");
 
         if (ggml_openvino_getenv_int("GGML_OPENVINO_DEBUG_OUTPUT")) {
             for (size_t i = 0; i < ov_output_names.size(); i++) {

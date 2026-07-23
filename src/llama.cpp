@@ -5,6 +5,7 @@
 #include "llama-chat.h"
 #include "llama-context.h"
 #include "llama-mmap.h"
+#include "llama-mem-footprint.h"
 #include "llama-vocab.h"
 #include "llama-model-loader.h"
 #include "llama-model-saver.h"
@@ -279,16 +280,20 @@ static bool llama_prepare_model_devices(const llama_model_params & params, llama
 static std::pair<int, llama_model *> llama_model_load(struct gguf_context * metadata, llama_model_set_tensor_data_t set_tensor_data, void * set_tensor_data_ud,
         const std::string & fname, std::vector<std::string> & splits, FILE * file, llama_model_params & params) {
     try {
+        llama_mem_footprint_print("llama_model_load: before llama_model_loader");
         llama_model_loader ml(metadata, set_tensor_data, set_tensor_data_ud, fname, splits, file, params.use_mmap, params.use_direct_io,
             params.check_tensors, params.no_alloc, params.kv_overrides, params.tensor_buft_overrides);
+        llama_mem_footprint_print("llama_model_load: after llama_model_loader");
 
         ml.print_info();
         std::unique_ptr<llama_model> model_ptr(llama_model_create(ml, params));
+        llama_mem_footprint_print("llama_model_load: after llama_model_create");
 
         bool ok = llama_prepare_model_devices(params, model_ptr.get());
         if (!ok) {
             return {-1, nullptr};
         }
+        llama_mem_footprint_print("llama_model_load: after prepare_model_devices");
 
         auto * model = dynamic_cast<llama_model_base *>(model_ptr.get());
         if (model == nullptr) {
@@ -310,6 +315,7 @@ static std::pair<int, llama_model *> llama_model_load(struct gguf_context * meta
         } catch(const std::exception & e) {
             throw std::runtime_error("error loading model hyperparameters: " + std::string(e.what()));
         }
+        llama_mem_footprint_print("llama_model_load: after load_hparams");
         if (model->arch == LLM_ARCH_CLIP) {
             throw std::runtime_error("CLIP cannot be used as main model, use it with --mmproj instead");
         }
@@ -318,18 +324,22 @@ static std::pair<int, llama_model *> llama_model_load(struct gguf_context * meta
         } catch(const std::exception & e) {
             throw std::runtime_error("error loading model vocabulary: " + std::string(e.what()));
         }
+        llama_mem_footprint_print("llama_model_load: after load_vocab");
 
         model->load_stats(ml);
         model->print_info();
+        llama_mem_footprint_print("llama_model_load: after load_stats_print_info");
 
         if (params.vocab_only) {
             LLAMA_LOG_INFO("%s: vocab only - skipping tensors\n", __func__);
             return {0, model_ptr.release()};
         }
 
+        llama_mem_footprint_print("llama_model_load: before load_tensors");
         if (!model->load_tensors(ml)) {
             return {-2, nullptr};
         }
+        llama_mem_footprint_print("llama_model_load: after load_tensors");
 
         return {0, model_ptr.release()};
     } catch (const std::exception & err) {

@@ -4,6 +4,7 @@
 #include "llama-ext.h"
 #include "llama-hparams.h"
 #include "llama-impl.h"
+#include "llama-mem-footprint.h"
 #include "llama-mmap.h"
 #include "llama-cparams.h"
 #include "llama-model-loader.h"
@@ -24,6 +25,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cfloat>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <cmath>
@@ -1227,6 +1229,7 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
 
     LLAMA_LOG_INFO("%s: loading model tensors, this can take a while... (mmap = %s, direct_io = %s)\n",
         __func__, ml.use_mmap ? "true" : "false", ml.use_direct_io ? "true" : "false");
+    llama_mem_footprint_print("load_tensors: begin");
 
     // build a list of buffer types for the CPU and GPU devices
     pimpl->cpu_buft_list = make_cpu_buft_list(devices, params.use_extra_bufts, params.no_host);
@@ -1301,6 +1304,7 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
 
     // assign the output layer
     pimpl->dev_output = get_layer_buft_list(n_layer_all);
+    llama_mem_footprint_print("load_tensors: after device and buffer type assignment");
 
     const auto TENSOR_NOT_REQUIRED = llama_model_loader::TENSOR_NOT_REQUIRED;
 
@@ -1474,7 +1478,9 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
             }
         }
     }
+    llama_mem_footprint_print("load_tensors: after create tensor metadata");
     ml.done_getting_tensors();
+    llama_mem_footprint_print("load_tensors: after done_getting_tensors");
 
     // Tied NVFP4 output is valid when no separate LM-head scale tensors are present.
     // If sidecar scales exist, the output weight must be an actual output tensor.
@@ -1488,8 +1494,11 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
             tensors_by_name.emplace_back(ggml_get_name(cur), cur);
         }
     }
+    llama_mem_footprint_print("load_tensors: after tensors_by_name population");
 
+    llama_mem_footprint_print("load_tensors: before init_mappings");
     ml.init_mappings(true, use_mlock ? &pimpl->mlock_mmaps : nullptr);
+    llama_mem_footprint_print("load_tensors: after init_mappings");
     pimpl->mappings.reserve(ml.mappings.size());
 
     // create the backend buffers
@@ -1500,6 +1509,7 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
     const size_t n_max_backend_buffer = ml.ctx_map.size() * ml.files.size();
     pimpl->ctxs_bufs.reserve(n_max_backend_buffer);
 
+    llama_mem_footprint_print("load_tensors: before backend buffer allocation");
     for (auto & [buft, ctx_ptr] : ml.ctx_map) {
         ggml_context * ctx = ctx_ptr.get();
 
@@ -1581,7 +1591,9 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
         pimpl->ctxs_bufs.emplace_back(std::move(ctx_ptr), std::move(bufs));
 
         ctx_buf_maps.emplace_back(ctx, buf_map);
+        llama_mem_footprint_print("----allocate buf:");
     }
+    llama_mem_footprint_print("load_tensors: after backend buffer allocation");
 
     if (llama_supports_gpu_offload()) {
         const int n_gpu = std::min(n_gpu_layers, n_layer_all);
@@ -1612,10 +1624,19 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
     }
 
     // load tensor data
+    int load_all_data_idx = 0;
     for (auto & [ctx, buf_map] : ctx_buf_maps) {
+        const char * buffer_name = buf_map.empty() ? "empty" : ggml_backend_buffer_name(buf_map.begin()->second);
+        char before_label[160];
+        snprintf(before_label, sizeof(before_label), "load_tensors: before load_all_data[%d] %s", load_all_data_idx, buffer_name);
+        llama_mem_footprint_print(before_label);
         if (!ml.load_all_data(ctx, buf_map, use_mlock ? &pimpl->mlock_mmaps : NULL, params.progress_callback, params.progress_callback_user_data)) {
             return false;
         }
+        char after_label[160];
+        snprintf(after_label, sizeof(after_label), "load_tensors: after load_all_data[%d] %s", load_all_data_idx, buffer_name);
+        llama_mem_footprint_print(after_label);
+        load_all_data_idx++;
     }
 
     if (use_mmap_buffer) {
@@ -1623,6 +1644,8 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
             pimpl->mappings.emplace_back(std::move(mapping));
         }
     }
+    llama_mem_footprint_print("load_tensors: after preserving mmap mappings");
+    llama_mem_footprint_print("load_tensors: end");
 
     return true;
 }

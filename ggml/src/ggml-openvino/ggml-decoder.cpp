@@ -6,6 +6,7 @@
 #include "ggml-quants.h"
 #include "ggml.h"
 #include "utils.h"
+#include "../../../src/llama-mem-footprint.h"
 
 #include <algorithm>
 #include <cassert>
@@ -889,6 +890,10 @@ std::map<std::string, std::string> GgmlOvDecoder::get_kv_param_res_names() const
 }
 
 std::map<std::string, std::shared_ptr<ov::Node>> GgmlOvDecoder::create_weight_nodes(ggml_cgraph * cgraph, bool naive) {
+    char begin_label[160];
+    snprintf(begin_label, sizeof(begin_label), "openvino: before create_weight_nodes naive=%d n_nodes=%d", naive ? 1 : 0,
+             cgraph->n_nodes);
+    llama_mem_footprint_print(begin_label);
     std::map<std::string, std::shared_ptr<ov::Node>> model_weights;
     auto * nodes = cgraph->nodes;
     auto n_nodes = cgraph->n_nodes;
@@ -916,6 +921,10 @@ std::map<std::string, std::shared_ptr<ov::Node>> GgmlOvDecoder::create_weight_no
             }
         }
     }
+    char end_label[160];
+    snprintf(end_label, sizeof(end_label), "openvino: after create_weight_nodes naive=%d weights=%zu", naive ? 1 : 0,
+             model_weights.size());
+    llama_mem_footprint_print(end_label);
     return model_weights;
 }
 
