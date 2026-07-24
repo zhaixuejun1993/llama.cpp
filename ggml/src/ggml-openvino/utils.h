@@ -90,7 +90,30 @@ struct decoder_runtime_ctx {
     std::shared_ptr<GgmlOvDecoder> ptr;
 };
 
+struct graph_compile_status {
+    bool prefill_required = false;
+    bool decode_required = false;
+    bool generic_required = false;
+    bool prefill_cached = false;
+    bool decode_cached = false;
+    bool generic_cached = false;
+
+    bool complete() const {
+        return (!prefill_required || prefill_cached) && (!decode_required || decode_cached) &&
+               (!generic_required || generic_cached);
+    }
+};
+
 struct ov_runtime_context {
+    enum class weight_release_state {
+        NOT_COMPILED,
+        COMPILED_CACHED,
+        RELEASE_DISABLED,
+        RELEASE_READY,
+        VERIFY_POISONED,
+        RELEASED,
+    };
+
     mutable std::mutex ctx_mutex;
     std::string device;
     bool stateful;
@@ -99,27 +122,66 @@ struct ov_runtime_context {
     std::unordered_map<graph_key, std::shared_ptr<ov::InferRequest>, graph_key_hash> infer_request_cache_prefill;
     std::unordered_map<graph_key, std::vector<std::string>, graph_key_hash> ov_input_names_cache;
     std::unordered_map<graph_key, std::vector<std::string>, graph_key_hash> ov_output_names_cache;
+    std::unordered_map<graph_key, graph_compile_status, graph_key_hash> graph_compile_cache;
     //TODO: Stateful is only supported for single request at a time.
     //      Simultanous stateful inference request support to be added.
     size_t stateful_kv_size;
     std::map<std::string, std::string> kv_state_input_name_map;
     std::atomic<int> backend_count;
+    weight_release_state release_state = weight_release_state::NOT_COMPILED;
+    std::string release_skip_reason;
+    size_t release_cache_hits = 0;
+    bool release_cache_frozen = false;
+    bool release_prefill_cached = false;
+    bool release_decode_cached = false;
 
     ov_runtime_context() : device("CPU"), stateful(false), stateful_kv_size(0), backend_count(0) {}
 
     void clear_caches_locked() {
+        if (release_cache_frozen) {
+            GGML_ABORT("OpenVINO compiled weight release froze the graph cache; refusing to clear caches and recompile");
+        }
+        if (release_state == weight_release_state::VERIFY_POISONED || release_state == weight_release_state::RELEASED) {
+            GGML_ABORT("OpenVINO compiled weight host storage was invalidated; refusing to clear caches and recompile");
+        }
+        clear_caches_locked_unchecked();
+    }
+
+    void assert_weights_available_for_conversion() const {
+        std::lock_guard<std::mutex> lock(ctx_mutex);
+        if (release_cache_frozen) {
+            GGML_ABORT("OpenVINO compiled weight release froze the graph cache; refusing to convert a new graph");
+        }
+        if (release_state == weight_release_state::VERIFY_POISONED || release_state == weight_release_state::RELEASED) {
+            GGML_ABORT("OpenVINO compiled weight host storage was invalidated; refusing to convert a new graph");
+        }
+    }
+
+    void clear_caches_locked_unchecked() {
         decoder_cache.clear();
         infer_request_cache.clear();
         infer_request_cache_prefill.clear();
         ov_input_names_cache.clear();
         ov_output_names_cache.clear();
+        graph_compile_cache.clear();
         kv_state_input_name_map.clear();
         stateful_kv_size = 0;
+        release_state = weight_release_state::NOT_COMPILED;
+        release_skip_reason.clear();
+        release_cache_hits = 0;
+        release_cache_frozen = false;
+        release_prefill_cached = false;
+        release_decode_cached = false;
     }
 
     void clear_caches() {
         std::lock_guard<std::mutex> lock(ctx_mutex);
         clear_caches_locked();
+    }
+
+    void clear_caches_for_shutdown() {
+        std::lock_guard<std::mutex> lock(ctx_mutex);
+        clear_caches_locked_unchecked();
     }
 };
 
@@ -163,6 +225,8 @@ std::vector<T> pad_input(const ggml_tensor * tensor, size_t padded_rows, size_t 
 }
 
 const ggml_tensor * get_inp_pos_tensor(struct ggml_cgraph * cgraph);
+
+const ggml_tensor * try_get_inp_pos_tensor(struct ggml_cgraph * cgraph);
 
 bool get_is_prefill(const ggml_tensor * inp_pos);
 

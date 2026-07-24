@@ -40,6 +40,284 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
+enum class ov_graph_compile_role {
+    GENERIC,
+    PREFILL,
+    DECODE,
+    PREFILL_AND_DECODE,
+};
+
+struct ov_release_cache_readiness {
+    bool complete = false;
+    bool prefill_cached = false;
+    bool decode_cached = false;
+    size_t cached_variants = 0;
+    size_t incomplete_variants = 0;
+};
+
+static void ov_update_graph_compile_status(graph_compile_status & status,
+                                           ov_graph_compile_role role,
+                                           bool cached) {
+    switch (role) {
+    case ov_graph_compile_role::PREFILL_AND_DECODE:
+        status.prefill_required = true;
+        status.decode_required = true;
+        if (cached) {
+            status.prefill_cached = true;
+            status.decode_cached = true;
+        }
+        break;
+    case ov_graph_compile_role::PREFILL:
+        status.prefill_required = true;
+        if (cached) {
+            status.prefill_cached = true;
+        }
+        break;
+    case ov_graph_compile_role::DECODE:
+        status.decode_required = true;
+        if (cached) {
+            status.decode_cached = true;
+        }
+        break;
+    case ov_graph_compile_role::GENERIC:
+        status.generic_required = true;
+        if (cached) {
+            status.generic_cached = true;
+        }
+        break;
+    }
+}
+
+static void ov_note_graph_compile_required(std::shared_ptr<ov_runtime_context> r_ctx,
+                                           const graph_key & key,
+                                           ov_graph_compile_role role) {
+    std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+    ov_update_graph_compile_status(r_ctx->graph_compile_cache[key], role, false);
+}
+
+static void ov_note_graph_compile_cached(std::shared_ptr<ov_runtime_context> r_ctx,
+                                         const graph_key & key,
+                                         ov_graph_compile_role role) {
+    std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+    auto & status = r_ctx->graph_compile_cache[key];
+    ov_update_graph_compile_status(status, role, true);
+    if (status.prefill_cached) {
+        r_ctx->release_prefill_cached = true;
+    }
+    if (status.decode_cached) {
+        r_ctx->release_decode_cached = true;
+    }
+}
+
+static ov_release_cache_readiness ov_get_release_cache_readiness(std::shared_ptr<ov_runtime_context> r_ctx) {
+    ov_release_cache_readiness readiness;
+    std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+    readiness.prefill_cached = r_ctx->release_prefill_cached;
+    readiness.decode_cached = r_ctx->release_decode_cached;
+    readiness.cached_variants = r_ctx->graph_compile_cache.size();
+
+    for (const auto & pair : r_ctx->graph_compile_cache) {
+        if (!pair.second.complete()) {
+            readiness.incomplete_variants++;
+        }
+    }
+
+    readiness.complete = readiness.prefill_cached && readiness.decode_cached && readiness.cached_variants > 0 &&
+                         readiness.incomplete_variants == 0;
+    return readiness;
+}
+
+static const char * ov_weight_release_state_name(ov_runtime_context::weight_release_state state) {
+    switch (state) {
+        case ov_runtime_context::weight_release_state::NOT_COMPILED:
+            return "not_compiled";
+        case ov_runtime_context::weight_release_state::COMPILED_CACHED:
+            return "compiled_cached";
+        case ov_runtime_context::weight_release_state::RELEASE_DISABLED:
+            return "release_disabled";
+        case ov_runtime_context::weight_release_state::RELEASE_READY:
+            return "release_ready";
+        case ov_runtime_context::weight_release_state::VERIFY_POISONED:
+            return "verify_poisoned";
+        case ov_runtime_context::weight_release_state::RELEASED:
+            return "released";
+    }
+    return "unknown";
+}
+
+static void ov_report_compiled_weight_release_candidate(std::shared_ptr<ov_runtime_context> r_ctx,
+                                                        bool cache_enabled,
+                                                        bool model_is_splitted) {
+    static const bool release_enabled = ggml_openvino_getenv_int("GGML_OPENVINO_RELEASE_COMPILED_WEIGHTS", 1);
+    static const bool verify_enabled = ggml_openvino_getenv_int("GGML_OPENVINO_VERIFY_COMPILED_WEIGHT_INDEPENDENCE");
+    static const bool freeze_enabled = ggml_openvino_getenv_int("GGML_OPENVINO_RELEASE_FREEZE_CACHE", 1);
+    const auto stats = ggml_openvino_get_weight_release_stats();
+    const auto cache_readiness = ov_get_release_cache_readiness(r_ctx);
+
+    ov_runtime_context::weight_release_state terminal_state = ov_runtime_context::weight_release_state::NOT_COMPILED;
+    bool has_terminal_state = false;
+    {
+        std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+        if (r_ctx->release_state == ov_runtime_context::weight_release_state::VERIFY_POISONED ||
+            r_ctx->release_state == ov_runtime_context::weight_release_state::RELEASED) {
+            terminal_state = r_ctx->release_state;
+            has_terminal_state = true;
+        }
+    }
+    if (has_terminal_state) {
+        GGML_LOG_INFO("OpenVINO compiled weight release: state=%s, candidates=%zu, candidate_host=%.2f MiB, "
+                      "host_total=%.2f MiB, weight_extras=%zu, quant_weight_extras=%zu, tensor_extras=%zu\n",
+                      ov_weight_release_state_name(terminal_state),
+                      stats.n_candidate_contexts,
+                      double(stats.candidate_host_bytes) / (1024.0 * 1024.0),
+                      double(stats.total_host_bytes) / (1024.0 * 1024.0),
+                      stats.n_weight_extras,
+                      stats.n_quantized_weight_extras,
+                      stats.n_tensor_extras);
+        return;
+    }
+
+    std::string skip_reason;
+    if (!release_enabled && !verify_enabled) {
+        skip_reason = "compiled weight host invalidation is not enabled";
+    } else if (ggml_openvino_get_device_name() != "GPU") {
+        skip_reason = "device is not GPU";
+    } else if (!cache_enabled) {
+        skip_reason = "OpenVINO graph cache is disabled";
+    } else if (model_is_splitted) {
+        skip_reason = "split graphs are not eligible";
+    } else if (!cache_readiness.complete) {
+        skip_reason = "waiting for prefill/decode and dynamic graph variants to be compiled/cached (prefill=" +
+                std::to_string(cache_readiness.prefill_cached ? 1 : 0) + ", decode=" +
+                std::to_string(cache_readiness.decode_cached ? 1 : 0) + ", variants=" +
+                std::to_string(cache_readiness.cached_variants) + ", incomplete=" +
+                std::to_string(cache_readiness.incomplete_variants) + ")";
+    } else if (release_enabled && !verify_enabled && !freeze_enabled) {
+        skip_reason = "GGML_OPENVINO_RELEASE_FREEZE_CACHE is not enabled";
+    } else if (stats.n_candidate_contexts == 0 || stats.candidate_host_bytes == 0) {
+        skip_reason = "no releasable host weight buffer candidates";
+    }
+
+    const auto state = skip_reason.empty() ? ov_runtime_context::weight_release_state::RELEASE_READY :
+                                             ov_runtime_context::weight_release_state::RELEASE_DISABLED;
+    {
+        std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+        r_ctx->release_state = state;
+        r_ctx->release_skip_reason = skip_reason;
+        if (state == ov_runtime_context::weight_release_state::RELEASE_READY && release_enabled && freeze_enabled && !verify_enabled) {
+            r_ctx->release_cache_frozen = true;
+        }
+    }
+
+    GGML_LOG_INFO("OpenVINO compiled weight release: state=%s, candidates=%zu, candidate_host=%.2f MiB, "
+                  "host_total=%.2f MiB, weight_extras=%zu, quant_weight_extras=%zu, tensor_extras=%zu%s%s\n",
+                  ov_weight_release_state_name(state),
+                  stats.n_candidate_contexts,
+                  double(stats.candidate_host_bytes) / (1024.0 * 1024.0),
+                  double(stats.total_host_bytes) / (1024.0 * 1024.0),
+                  stats.n_weight_extras,
+                  stats.n_quantized_weight_extras,
+                  stats.n_tensor_extras,
+                  skip_reason.empty() ? "" : ", skip=",
+                  skip_reason.empty() ? "" : skip_reason.c_str());
+}
+
+static void ov_verify_compiled_weight_independence(std::shared_ptr<ov_runtime_context> r_ctx) {
+    static const bool verify_enabled = ggml_openvino_getenv_int("GGML_OPENVINO_VERIFY_COMPILED_WEIGHT_INDEPENDENCE");
+    if (!verify_enabled) {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+        if (r_ctx->release_state == ov_runtime_context::weight_release_state::VERIFY_POISONED) {
+            return;
+        }
+        if (r_ctx->release_state != ov_runtime_context::weight_release_state::RELEASE_READY) {
+            GGML_LOG_WARN("OpenVINO compiled weight verification skipped: release state is %s%s%s\n",
+                          ov_weight_release_state_name(r_ctx->release_state),
+                          r_ctx->release_skip_reason.empty() ? "" : ", reason=",
+                          r_ctx->release_skip_reason.empty() ? "" : r_ctx->release_skip_reason.c_str());
+            return;
+        }
+    }
+
+    constexpr uint8_t poison_value = 0xA5;
+    const size_t poisoned_bytes = ggml_openvino_poison_weight_release_candidates(poison_value);
+    {
+        std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+        r_ctx->release_state = ov_runtime_context::weight_release_state::VERIFY_POISONED;
+        r_ctx->release_skip_reason.clear();
+        r_ctx->release_cache_frozen = true;
+    }
+
+    GGML_LOG_WARN("OpenVINO compiled weight verification: poisoned %.2f MiB of host weight backing memory with 0x%02X; "
+                  "subsequent inference must rely only on compiled GPU weights\n",
+                  double(poisoned_bytes) / (1024.0 * 1024.0),
+                  unsigned(poison_value));
+}
+
+static void ov_release_compiled_weight_host_storage(std::shared_ptr<ov_runtime_context> r_ctx) {
+    static const bool verify_enabled = ggml_openvino_getenv_int("GGML_OPENVINO_VERIFY_COMPILED_WEIGHT_INDEPENDENCE");
+    if (verify_enabled) {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+        if (r_ctx->release_state == ov_runtime_context::weight_release_state::RELEASED) {
+            return;
+        }
+        if (r_ctx->release_state != ov_runtime_context::weight_release_state::RELEASE_READY) {
+            return;
+        }
+    }
+
+    const size_t released_bytes = ggml_openvino_release_weight_candidates();
+    {
+        std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+        r_ctx->release_state = ov_runtime_context::weight_release_state::RELEASED;
+        r_ctx->release_skip_reason.clear();
+        r_ctx->release_cache_frozen = true;
+    }
+
+    GGML_LOG_WARN("OpenVINO compiled weight release: released %.2f MiB of host weight backing memory; "
+                  "future cache miss or reconversion is disabled for this runtime context\n",
+                  double(released_bytes) / (1024.0 * 1024.0));
+}
+
+static bool ov_runtime_requires_cached_graph(std::shared_ptr<ov_runtime_context> r_ctx) {
+    std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+    return r_ctx->release_cache_frozen ||
+           r_ctx->release_state == ov_runtime_context::weight_release_state::VERIFY_POISONED ||
+           r_ctx->release_state == ov_runtime_context::weight_release_state::RELEASED;
+}
+
+static void ov_assert_dynamic_graph_is_cached(std::shared_ptr<ov_runtime_context> r_ctx,
+                                              const graph_key & key,
+                                              const ModelParams & m_params) {
+    std::shared_ptr<decoder_runtime_ctx> entry;
+    {
+        std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+        auto it = r_ctx->decoder_cache.find(key);
+        if (it == r_ctx->decoder_cache.end()) {
+            GGML_ABORT("OpenVINO compiled weight host storage was invalidated; refusing to inspect or convert an uncached dynamic graph");
+        }
+        entry = it->second;
+    }
+
+    std::lock_guard<std::mutex> lock(*(entry->mutex));
+    if (!entry->ptr) {
+        GGML_ABORT("OpenVINO compiled weight host storage was invalidated; refusing to reuse an empty dynamic cache entry");
+    }
+    if (entry->ptr->is_splited_model()) {
+        GGML_ABORT("OpenVINO compiled weight host storage was invalidated; refusing to reuse a split dynamic graph");
+    }
+    if (!entry->ptr->get_model_params().can_reuse_dynamically(m_params)) {
+        GGML_ABORT("OpenVINO compiled weight host storage was invalidated; refusing to rebuild a non-reusable dynamic graph");
+    }
+}
+
 enum ggml_status ov_graph_compute(ggml_cgraph * cgraph, ggml_backend_t backend) {
     ggml_backend_openvino_context * ctx = (ggml_backend_openvino_context *) backend->context;
     try {
@@ -171,7 +449,24 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
     const auto & stateful = r_ctx->stateful;
     static auto is_static = false;
 
-    bool model_is_splitted = is_model_splitted(cgraph);
+    ModelParams m_params;
+    ComputeParams c_params;
+    std::tie(m_params, c_params) = GgmlOvDecoder::compute_llm_params(cgraph, is_static);
+
+    graph_key key(cgraph);
+    const auto * inp_pos = try_get_inp_pos_tensor(cgraph);
+    const auto compile_role = inp_pos == nullptr ? ov_graph_compile_role::GENERIC :
+                                                    ov_graph_compile_role::PREFILL_AND_DECODE;
+    static const bool cache_disabled = ggml_openvino_getenv_int("GGML_OPENVINO_DISABLE_CACHE");
+    const bool requires_cached_graph = ov_runtime_requires_cached_graph(r_ctx);
+    if (requires_cached_graph) {
+        if (cache_disabled) {
+            GGML_ABORT("OpenVINO compiled weight host storage was invalidated; graph cache is disabled");
+        }
+        ov_assert_dynamic_graph_is_cached(r_ctx, key, m_params);
+    }
+
+    bool model_is_splitted = requires_cached_graph ? false : is_model_splitted(cgraph);
     if (is_naive(cgraph)) {
         if (!model_is_splitted) {
             return naive_compute(cgraph, core, device, config);
@@ -183,12 +478,6 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
 
     std::shared_ptr<GgmlOvDecoder> ggml_decoder;
     std::shared_ptr<ov::InferRequest> infer_request;
-    ModelParams m_params;
-    ComputeParams c_params;
-    std::tie(m_params, c_params) = GgmlOvDecoder::compute_llm_params(cgraph, is_static);
-
-    graph_key key(cgraph);
-    static const bool cache_disabled = ggml_openvino_getenv_int("GGML_OPENVINO_DISABLE_CACHE");
     const bool cache_enabled = !model_is_splitted && !cache_disabled;
     bool cache_hit = false;
 
@@ -209,7 +498,6 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
             if (cache_hit) {
                 entry = it->second;
             } else {
-                r_ctx->clear_caches_locked();
                 auto mutex = std::make_shared<std::mutex>();
                 entry = std::make_shared<decoder_runtime_ctx>(mutex);
                 r_ctx->decoder_cache[key] = entry;
@@ -227,6 +515,18 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
             old_m_params = ggml_decoder->get_model_params();
             if (!ggml_decoder->is_splited_model()) {
                 cache_hit = old_m_params.can_reuse_dynamically(m_params);
+            }
+            if (cache_hit) {
+                r_ctx->release_cache_hits++;
+                ov_note_graph_compile_cached(r_ctx, key, compile_role);
+                ov_report_compiled_weight_release_candidate(r_ctx, cache_enabled, model_is_splitted);
+                ov_verify_compiled_weight_independence(r_ctx);
+                ov_release_compiled_weight_host_storage(r_ctx);
+            } else {
+                std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+                if (r_ctx->release_cache_frozen) {
+                    GGML_ABORT("OpenVINO compiled weight release froze the graph cache; refusing to rebuild a non-reusable dynamic cache entry");
+                }
             }
         }
         llama_mem_footprint_print(cache_hit ? "openvino dynamic: after cache lookup hit" : "openvino dynamic: after cache lookup miss");
@@ -298,6 +598,12 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
                 r_ctx->infer_request_cache.erase(key);
             }
 
+            if (cache_enabled) {
+                ov_note_graph_compile_required(r_ctx, key, compile_role);
+            }
+
+            r_ctx->assert_weights_available_for_conversion();
+
             std::shared_ptr<ov::Model> model;
             llama_mem_footprint_print("openvino dynamic: before create_weight_nodes actual");
             auto model_weights = GgmlOvDecoder::create_weight_nodes(cgraph);
@@ -351,6 +657,14 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
                 r_ctx->ov_input_names_cache[key] = ov_input_names;
                 r_ctx->ov_output_names_cache[key] = ov_output_names;
             }
+
+            if (cache_enabled) {
+                ov_note_graph_compile_cached(r_ctx, key, compile_role);
+            }
+
+            ov_report_compiled_weight_release_candidate(r_ctx, cache_enabled, model_is_splitted);
+            ov_verify_compiled_weight_independence(r_ctx);
+            ov_release_compiled_weight_host_storage(r_ctx);
 
             if (stateful && cache_enabled) {
                 const auto * inp_pos = get_inp_pos_tensor(cgraph);
@@ -468,7 +782,6 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
         if (cache_hit) {
             entry = it->second;
         } else {
-            r_ctx->clear_caches_locked();
             auto mutex = std::make_shared<std::mutex>();
             entry = std::make_shared<decoder_runtime_ctx>(mutex);
             r_ctx->decoder_cache[key] = entry;
@@ -485,6 +798,18 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
         ggml_decoder = entry->ptr;
         old_m_params = ggml_decoder->get_model_params();
         cache_hit = old_m_params.can_reuse_statically(m_params);
+        if (cache_hit) {
+            r_ctx->release_cache_hits++;
+            ov_note_graph_compile_cached(r_ctx, key, ov_graph_compile_role::PREFILL_AND_DECODE);
+            ov_report_compiled_weight_release_candidate(r_ctx, cache_enabled, false);
+            ov_verify_compiled_weight_independence(r_ctx);
+            ov_release_compiled_weight_host_storage(r_ctx);
+        } else {
+            std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+            if (r_ctx->release_cache_frozen) {
+                GGML_ABORT("OpenVINO compiled weight release froze the graph cache; refusing to rebuild a non-reusable static cache entry");
+            }
+        }
     }
 
     std::vector<std::string> ov_input_names_local;
@@ -516,6 +841,12 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
             r_ctx->infer_request_cache.erase(key);
             r_ctx->infer_request_cache_prefill.erase(key);
         }
+
+        if (cache_enabled) {
+            ov_note_graph_compile_required(r_ctx, key, ov_graph_compile_role::PREFILL_AND_DECODE);
+        }
+
+        r_ctx->assert_weights_available_for_conversion();
 
         std::shared_ptr<ov::Model> model;
         auto model_weights = GgmlOvDecoder::create_weight_nodes(cgraph);
@@ -582,6 +913,14 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
             r_ctx->ov_input_names_cache[key] = ov_input_names_local;
             r_ctx->ov_output_names_cache[key] = ov_output_names_local;
         }
+
+        if (cache_enabled) {
+            ov_note_graph_compile_cached(r_ctx, key, ov_graph_compile_role::PREFILL_AND_DECODE);
+        }
+
+        ov_report_compiled_weight_release_candidate(r_ctx, cache_enabled, false);
+        ov_verify_compiled_weight_independence(r_ctx);
+        ov_release_compiled_weight_host_storage(r_ctx);
     }
 
     if (is_prefill) {
@@ -1177,7 +1516,7 @@ void print_output_tensor_info(const std::string & name, const ov::Tensor & tenso
     }
 }
 
-const ggml_tensor * get_inp_pos_tensor(ggml_cgraph * cgraph) {
+const ggml_tensor * try_get_inp_pos_tensor(ggml_cgraph * cgraph) {
     for (int i = 0; i < cgraph->n_nodes; ++i) {
         auto * op = cgraph->nodes[i];
         for (int j = 0; j < GGML_MAX_SRC; ++j) {
@@ -1189,6 +1528,13 @@ const ggml_tensor * get_inp_pos_tensor(ggml_cgraph * cgraph) {
                 return src;
             }
         }
+    }
+    return nullptr;
+}
+
+const ggml_tensor * get_inp_pos_tensor(ggml_cgraph * cgraph) {
+    if (const auto * inp_pos = try_get_inp_pos_tensor(cgraph)) {
+        return inp_pos;
     }
     GGML_LOG_ERROR("get_inp_pos_tensor: inp_pos not found in cgraph");
     throw std::runtime_error("get_inp_pos_tensor: inp_pos not found in cgraph");
