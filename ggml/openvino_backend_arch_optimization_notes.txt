@@ -1,0 +1,290 @@
+下面是从 arch 角度细化后的 OpenVINO backend 分层实现，以及我认为更好的优化方向。结论先说：当前设计的大方向是对的，是“graph translation backend”，不是 eager per-op backend。更值得优化的是边界、缓存、规则表达和生命周期管理，而不是推翻重做。
+
+1. 构建与注册层
+
+相关文件：
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/include/ggml-openvino.h
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-backend-reg.cpp
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/ggml-openvino.cpp
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/CMakeLists.txt
+
+实现方式：
+OpenVINO backend 通过 GGML_USE_OPENVINO 编译开关接入 ggml backend registry。公共 API 暴露初始化、buffer type、device count、backend registry 等接口。实际注册发生在 ggml_backend_openvino_reg()，它初始化设备配置、创建一个 OpenVINO 设备对象，并挂上 ggml_backend_device_i。
+
+架构特点：
+- 对 ggml 来说，它表现为标准 backend。
+- 当前 device count 固定为 1，真正设备由 GGML_OPENVINO_DEVICE 决定，可以是 CPU、GPU、NPU。
+- backend device type 固定返回 GPU 类型，这对调度展示可能不够准确。
+
+优化建议：
+- 让 device abstraction 更真实：CPU/GPU/NPU 至少在 props/type/description 上区分清楚。
+- 如果未来要支持多 OpenVINO device，可以把 GGML_OPENVINO_DEVICE 从全局单例改成 per-device config。
+- 保持注册层薄，不要继续把复杂 pattern 规则堆在 backend interface 附近。
+
+2. 设备与环境配置层
+
+相关文件：
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/ggml-openvino-extra.h
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/ggml-openvino-extra.cpp
+
+实现方式：
+ggml_openvino_device_config 是全局单例。初始化时读取并缓存所有 GGML_OPENVINO_* 环境变量，设置 OpenVINO device name、compile config、cache dir。GPU 路径创建 OpenCL context/queue，并构造 OpenVINO remote context；NPU 路径设置 NPUW 相关 compile config。
+
+架构特点：
+- 环境变量只初始化一次，避免运行中行为漂移。
+- CPU/GPU/NPU 配置集中在一个位置。
+- GPU 使用 OpenCL USM 相关扩展，服务 remote tensor 和 KV cache。
+
+优化建议：
+- 把环境变量解析成 typed config，例如 OpenVINOBackendConfig，减少到处用字符串 key。
+- compile config 可以拆成 make_cpu_config()、make_gpu_config()、make_npu_config()。
+- 现在 GGML_OPENVINO_ENABLE_CACHE 和 GGML_OPENVINO_DISABLE_CACHE 语义可能会让人困惑，建议统一成一个明确开关。
+- 如果后续支持多 backend 实例，当前 singleton 会成为架构瓶颈。
+
+3. Buffer 与 Tensor Extra 层
+
+相关文件：
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/ggml-openvino.cpp
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/ggml-openvino-extra.h
+
+实现方式：
+OpenVINO buffer 是 hybrid 设计：
+
+- 权重 tensor：在 set_tensor 阶段预处理为 OpenVINO Constant 或量化权重子图，挂到 tensor->extra。
+- 普通计算 tensor / KV cache：用 ov::Tensor 包装 ggml buffer 内存，也挂到 tensor->extra。
+- GPU KV cache 可切换到 OpenCL USM remote buffer。
+- buffer context 维护 tensor_extras map，统一清理 tensor->extra 的生命周期。
+
+架构优点：
+- 避免每次 graph translation 时重复 memcpy 权重。
+- tensor extra 让 runtime input binding 可以直接复用 ov::Tensor。
+- GPU remote buffer 给 KV cache 留出了零拷贝路径。
+
+风险：
+- tensor->extra 是一个弱约定，里面可能是 weight、quantized weight、tensor wrapper，语义靠 enum 区分。
+- view tensor 共享 extra，in-place alias 又会改 tensor map，生命周期和别名关系比较脆。
+- remote tensor 路径与 host tensor 路径散落在 buffer set/get/copy/clear 多处。
+
+优化建议：
+- 给 tensor->extra 包一层更明确的 RAII handle，例如 OpenVINOTensorAttachment，内部再区分 weight/tensor/remote。
+- 把 remote memory 操作集中成 OpenVINORemoteMemoryOps，减少 OpenCL queue 和 extension function 在 buffer 方法里重复出现。
+- 对 KV cache remote 化加更清晰的策略对象：何时 remote、何时 host、何时 stateful，避免只靠 tensor name cache_ 和 device 判断。
+
+4. 运行时 Graph Compute 层
+
+相关文件：
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/utils.h
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/utils.cpp
+
+实现方式：
+ggml_backend_openvino_graph_compute() 调 ov_graph_compute()。它根据 device 判断：
+
+- NPU：走 static path。
+- CPU/GPU：走 dynamic path。
+- 小图或特殊 split graph：走 naive path。
+
+动态路径流程：
+1. 根据 graph_key 查 decoder 和 InferRequest cache。
+2. cache miss 时创建 GgmlOvDecoder。
+3. 用自定义 OpenVINO frontend 转成 ov::Model。
+4. core.compile_model()。
+5. 创建/缓存 InferRequest。
+6. 设置 input/output tensor。
+7. infer_request->infer()。
+
+静态路径：
+- 主要面向 NPU。
+- 分成 prefill/decode 两套 model 和 infer request。
+- prefill 支持 chunking，默认 chunk size 256。
+
+优化建议：
+- 当前 graph_key 主要依赖节点数、首尾节点名、外部输入名。这是可用但偏脆的 cache identity。
+- 更稳的 cache key 应包含：device、static/stateful、compile config 摘要、关键 shape、KV buffer id、RoPE params、op type 序列、输入输出 role。
+- cache miss 时 clear_caches_locked() 会清掉所有缓存，策略偏粗。可以改成 LRU 或 per-key invalidation。
+- static/dynamic 两套 compute 有重复逻辑，可抽出“compile and bind”公共 pipeline，减少后续维护分叉。
+
+5. GgmlOvDecoder 图语义层
+
+相关文件：
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/ggml-decoder.h
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/ggml-decoder.cpp
+
+实现方式：
+GgmlOvDecoder 是关键中间层。它把 ggml_cgraph 暴露成 OpenVINO frontend decoder API：
+
+- 发现 model inputs。
+- 发现 model outputs。
+- 识别 weights。
+- 计算 shape/type/stride。
+- 识别 VIEW chain。
+- 维护 node name / op type / op case。
+- 根据 LLM 图结构计算 ModelParams 和 ComputeParams。
+
+架构优点：
+这是一个很合理的 anti-corruption layer：OpenVINO translator 不直接到处读 ggml 原始结构，而是通过 decoder API 获取语义。
+
+风险：
+- 很多逻辑依赖 tensor name，例如 KV cache、inp_pos、mask、layer id、SWA layer。
+- compute_op_case() 对 reshape/permute/view 等 pattern 分支很多，说明 lowering 前缺少 canonicalization。
+- llama.cpp graph 稍微变形，就可能击穿这些 structural assumptions。
+
+优化建议：
+- 增加一个 TensorRoleClassifier：统一判断 KV_CACHE、INP_POS、INP_MASK、TOKEN_EMBD、OUTPUT_IDX、STATE_CACHE 等角色。
+- 把 name-based 规则集中在 classifier 中，op translator 和 runtime 不再散落字符串判断。
+- 在 decoder 后、translator 前增加 canonicalization：规范 VIEW/RESHAPE/PERMUTE/in-place alias，让单个 op translator 少处理特殊 case。
+
+6. OpenVINO Frontend 与 TranslateSession 层
+
+相关文件：
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/openvino/frontend.cpp
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/openvino/input_model.cpp
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/openvino/translate_session.cpp
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/openvino/node_context.h
+
+实现方式：
+这是自定义 OpenVINO frontend：
+
+- InputModel 持有 GgmlDecoder。
+- FrontEnd::convert() 创建 TranslateSession。
+- TranslateSession 初始化 tensor map：parameters、extra inputs、weights。
+- 遍历 ggml nodes，通过 op table 找 translator。
+- translator 返回 OV outputs，写回 tensor map。
+- 对 in-place alias 做 tensor map refresh。
+- 最后生成 ov::Model(results, params)。
+- 执行 OpenVINO pass：compressed constants、stateful KV、NPU static matmul squeeze、weightless cache attribute 等。
+
+架构优点：
+- 层次清楚。
+- tensor map 是一个自然的 SSA-like lowering 环境。
+- in-place alias 问题在 session 层统一处理，方向对。
+
+优化建议：
+- TranslateSession 现在既做 lowering，又做 preprocess，又做 pass 管理，又处理 in-place alias。可以拆成：
+  - GraphLoweringContext
+  - TensorMap
+  - AliasResolver
+  - PassPipelineBuilder
+- preprocess() 目前只有 stateful mask 和被注释的 RoPE sin/cos，建议扩展成正式的 pre-lowering normalization 阶段。
+- apply_transformations() 可按 device/mode 构建 pass pipeline，避免 if static/stateful 散落。
+
+7. Op Table 与 Per-Op Translator 层
+
+相关文件：
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/openvino/op_table.cpp
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/openvino/op_table.h
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/openvino/op
+
+实现方式：
+get_supported_ops() 是核心 dispatch table。它把 GGML_OP_*、GGML_UNARY_OP_*、GGML_GLU_OP_* 映射到 translator function。简单 op 走模板 translate_1to1_match_*，复杂 op 单独实现，比如 mulmat、rope、flash_attn_ext、gated_delta_net、set_rows。
+
+架构优点：
+- 添加 op 的入口很清晰：声明 translator，写实现，加到 op table。
+- supports_op() 还能从 op table 反推支持集合，避免双维护一部分信息。
+
+风险：
+- op table 只表达“有 translator”，无法表达“在哪些 dtype/device/shape 下支持”。
+- 复杂 op translator 里容易混入 shape fix、device workaround、pattern fusion、layout canonicalization。
+
+优化建议：
+- 把 op table 升级成 capability table，例如每个 op 有：
+  - translator
+  - supported dtypes
+  - supported devices
+  - shape predicate
+  - known exclusions
+  - fallback reason
+- supports_op() 使用同一张 capability table，translator 也用同一套前置条件，避免调度说支持但 translator/compile 失败。
+- 对复杂 pattern，优先 lowering 成普通 OV graph，再用 pass fuse，不要在 translator 中做过多 fusion。
+
+8. Quantized Weight 层
+
+相关文件：
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/ggml-quants.h
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/ggml-quants.cpp
+
+实现方式：
+OpenVINO backend 在 set weight 时处理 ggml 量化格式：
+
+- Q4/Q5/Q6/Q8/K-quants 被拆成 weights/scales/zp。
+- MXFP4 被转换成 OpenVINO f4e2m1 和 f8e8m0。
+- 某些格式按设备策略 requantize，例如 NPU 偏向 Q4_0_128，部分权重转 Q8_0_C/F16。
+- 生成 OpenVINO dequant weight subgraph 或 Constant node，挂到 tensor->extra。
+
+架构优点：
+- 权重处理提前完成，graph conversion 时直接拿 node。
+- 量化格式适配独立成文件，和 op translator 分离得比较好。
+
+优化建议：
+- 把“选择 requant 类型”的 policy 从 extraction implementation 中拆出去。
+- 为 extracted/requantized tensors 增加可观测指标：原始大小、提取后大小、耗时、是否复用。
+- 对同一个 weight 的 extracted result 做更明确的 cache/reuse，避免 buffer 生命周期变化导致重复提取。
+- 给 NPU/GPU 各自的量化策略建表，不要散在 ggml_openvino_get_requant_type() 的 name/type 条件中。
+
+9. Pass 与 IR 优化层
+
+相关文件：
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/openvino/pass
+
+实现方式：
+当前已有：
+- SqueezeMatmul：NPU static 场景下改 MatMul 输入维度。
+- FuseToSDPA：旧 attention pattern 到 SDPA，注释说已不常维护，因为 FLASH_ATTN_EXT 替代。
+- MarkCompressedFloatConstants：压缩常量相关。
+- WeightlessCacheAttribute：给大 Constant 打属性，减少 NPUW lazy tensor memcpy。
+
+优化建议：
+- 更多 device/layout workaround 应迁移到 pass，而不是写进 translator 或 supports_op。
+- 建一个 PassPipelineBuilder(device, mode, stateful)。
+- RoPE、attention、KV state shaping、dequant layout 都适合逐步 pass 化。
+- FuseToSDPA 如果不维护，要么删除，要么纳入测试；半维护 pass 会增加误判风险。
+
+10. Scheduler Capability / supports_op 层
+
+相关文件：
+- /home/openvino-288v002/xuejun/llama.cpp/ggml/src/ggml-openvino/ggml-openvino.cpp
+
+实现方式：
+ggml_backend_openvino_device_supports_op() 从 op table 构建 supported op set，再叠加 dtype、quantized 维度、device-specific、model-specific、shape-specific 排除规则。
+
+它现在承担了很多架构责任：
+- op 是否存在 translator。
+- dtype 是否支持。
+- view input 是否支持。
+- GPU BF16 特例。
+- RoPE mode 特例。
+- Flash attention pattern 特例。
+- MoE/MUL_MAT_ID 临时内存限制。
+- 某些模型准确性 workaround。
+
+优化建议：
+这是最值得重构的一层。建议把它变成规则系统：
+
+- OpCapabilityRegistry
+- DeviceCapability
+- TypeCapability
+- ShapeCapability
+- PatternExclusion
+- FallbackReason
+
+这样有几个好处：
+- 调度边界可解释。
+- 测试可以覆盖每条 rule。
+- 新模型 workaround 不会继续污染 backend core。
+- op table 和 supports_op 可以共享同一份 capability metadata。
+
+推荐优化优先级
+
+1. 先重构 capability/supports_op 规则表。
+这是收益最高、风险最低的架构优化。它不改变执行语义，但能显著提升可维护性。
+
+2. 改进 graph cache key。
+当前 cache key 偏启发式。更强的 signature 能减少误复用/误失效，也方便 profiling。
+
+3. 建 tensor role classifier。
+把 KV/input/mask/state/output 的字符串判断集中起来，降低未来 llama.cpp graph 改动带来的维护成本。
+
+4. 抽出 pass pipeline builder。
+把 device/mode/stateful 的 OV pass 组织清楚，后续优化 NPU/GPU 会更稳。
+
+5. 再碰 stateful KV 和 remote tensor 扩展。
+这块性能潜力大，但并发、reset、KV window、SWA、GPU remote tensor bug 都会让风险变高，适合在前面几层清理后做。

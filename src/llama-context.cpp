@@ -6,6 +6,7 @@
 #include "llama-impl.h"
 #include "llama-batch.h"
 #include "llama-io.h"
+#include "llama-mem-footprint.h"
 #include "llama-memory.h"
 #include "llama-mmap.h"
 #include "llama-model.h"
@@ -310,9 +311,11 @@ llama_context::llama_context(
 
         // graph outputs buffer
         {
+            llama_mem_footprint_print("llama-simple: before ggml_backend_load_all");
             if (output_reserve(params.n_seq_max) < params.n_seq_max) {
                 throw std::runtime_error("failed to reserve initial output buffer");
             }
+            llama_mem_footprint_print("llama-simple: before ggml_backend_load_all");
 
             LLAMA_LOG_INFO("%s: %10s  output buffer size = %8.2f MiB\n", __func__,
                     ggml_backend_buffer_name    (buf_output.get()),
@@ -322,6 +325,7 @@ llama_context::llama_context(
 
     // init the memory module
     if (!hparams.vocab_only) {
+        llama_mem_footprint_print("llama-simple: before ggml_backend_load_all");
         llama_memory_params params_mem = {
             /*.type_k    =*/ params.type_k,
             /*.type_v    =*/ params.type_v,
@@ -331,9 +335,11 @@ llama_context::llama_context(
         };
 
         memory.reset(model.create_memory(params_mem, cparams));
+        llama_mem_footprint_print("llama-simple: before ggml_backend_load_all");
     }
 
     // init backends
+    llama_mem_footprint_print("llama-simple: before ggml_backend_load_all");
     if (!hparams.vocab_only) {
         LLAMA_LOG_DEBUG("%s: enumerating backends\n", __func__);
 
@@ -404,6 +410,7 @@ llama_context::llama_context(
             }
         }
     }
+    llama_mem_footprint_print("llama-simple: before ggml_backend_load_all");
 
     // Initialize the full vocabulary token ids for backend samplers.
     {
@@ -414,6 +421,7 @@ llama_context::llama_context(
             sampling.token_ids_full_vocab[i] = i;
         }
     }
+    llama_mem_footprint_print("llama-simple: before ggml_backend_load_all");
 }
 
 llama_context::~llama_context() {

@@ -1,9 +1,92 @@
 #include "llama.h"
 #include <clocale>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <string>
 #include <vector>
+
+namespace {
+struct mem_footprint_snapshot {
+    long long vm_size_kib = 0;
+    long long vm_rss_kib = 0;
+    long long vm_hwm_kib = 0;
+    long long rss_anon_kib = 0;
+    long long rss_file_kib = 0;
+    bool valid = false;
+};
+
+static bool mem_footprint_enabled() {
+    static const bool enabled = std::getenv("LLAMA_MEM_FOOTPRINT") != nullptr;
+    return enabled;
+}
+
+static bool mem_footprint_parse_kib(const std::string & line, const char * key, long long & value) {
+    const size_t key_len = std::strlen(key);
+    if (line.compare(0, key_len, key) != 0) {
+        return false;
+    }
+
+    const char * ptr = line.c_str() + key_len;
+    while (*ptr == ' ' || *ptr == '\t') {
+        ++ptr;
+    }
+
+    char * end = nullptr;
+    const long long parsed = std::strtoll(ptr, &end, 10);
+    if (end == ptr) {
+        return false;
+    }
+
+    value = parsed;
+    return true;
+}
+
+static mem_footprint_snapshot mem_footprint_read() {
+    mem_footprint_snapshot result;
+    std::ifstream status("/proc/self/status");
+    if (!status) {
+        return result;
+    }
+
+    std::string line;
+    while (std::getline(status, line)) {
+        mem_footprint_parse_kib(line, "VmSize:",  result.vm_size_kib) ||
+        mem_footprint_parse_kib(line, "VmRSS:",   result.vm_rss_kib)  ||
+        mem_footprint_parse_kib(line, "VmHWM:",   result.vm_hwm_kib)  ||
+        mem_footprint_parse_kib(line, "RssAnon:", result.rss_anon_kib) ||
+        mem_footprint_parse_kib(line, "RssFile:", result.rss_file_kib);
+    }
+    result.valid = true;
+    return result;
+}
+
+static double kib_to_mib(long long kib) {
+    return kib / 1024.0;
+}
+
+static void mem_footprint_print(const char * label) {
+    if (!mem_footprint_enabled()) {
+        return;
+    }
+
+    const auto mem = mem_footprint_read();
+    if (!mem.valid) {
+        fprintf(stderr, "llama_mem_footprint: %-64s unavailable\n", label);
+        return;
+    }
+
+    fprintf(stderr,
+            "llama_mem_footprint: %-64s VmRSS=%10.2f MiB VmHWM=%10.2f MiB VmSize=%10.2f MiB RssAnon=%10.2f MiB RssFile=%10.2f MiB\n",
+            label,
+            kib_to_mib(mem.vm_rss_kib),
+            kib_to_mib(mem.vm_hwm_kib),
+            kib_to_mib(mem.vm_size_kib),
+            kib_to_mib(mem.rss_anon_kib),
+            kib_to_mib(mem.rss_file_kib));
+}
+}  // namespace
 
 static void print_usage(int, char ** argv) {
     printf("\nexample usage:\n");
@@ -13,6 +96,7 @@ static void print_usage(int, char ** argv) {
 
 int main(int argc, char ** argv) {
     std::setlocale(LC_NUMERIC, "C");
+    mem_footprint_print("llama-simple: process start");
 
     // path to the model gguf file
     std::string model_path;
@@ -79,14 +163,18 @@ int main(int argc, char ** argv) {
 
     // load dynamic backends
 
+    mem_footprint_print("llama-simple: before ggml_backend_load_all");
     ggml_backend_load_all();
+    mem_footprint_print("llama-simple: after ggml_backend_load_all");
 
     // initialize the model
 
     llama_model_params model_params = llama_model_default_params();
     model_params.n_gpu_layers = ngl;
 
+    mem_footprint_print("llama-simple: before llama_model_load_from_file");
     llama_model * model = llama_model_load_from_file(model_path.c_str(), model_params);
+    mem_footprint_print("llama-simple: after llama_model_load_from_file");
 
     if (model == NULL) {
         fprintf(stderr , "%s: error: unable to load model\n" , __func__);
@@ -116,7 +204,9 @@ int main(int argc, char ** argv) {
     // enable performance counters
     ctx_params.no_perf = false;
 
+    mem_footprint_print("llama-simple: before llama_init_from_model");
     llama_context * ctx = llama_init_from_model(model, ctx_params);
+    mem_footprint_print("llama-simple: after llama_init_from_model");
 
     if (ctx == NULL) {
         fprintf(stderr , "%s: error: failed to create the llama_context\n" , __func__);
@@ -170,10 +260,18 @@ int main(int argc, char ** argv) {
 
     for (int n_pos = 0; n_pos + batch.n_tokens < n_prompt + n_predict; ) {
         // evaluate the current batch with the transformer model
+        char before_decode_label[128];
+        snprintf(before_decode_label, sizeof(before_decode_label),
+                 "llama-simple: before llama_decode call=%d n_tokens=%d", n_decode + 1, batch.n_tokens);
+        mem_footprint_print(before_decode_label);
         if (llama_decode(ctx, batch)) {
             fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);
             return 1;
         }
+        char after_decode_label[128];
+        snprintf(after_decode_label, sizeof(after_decode_label),
+                 "llama-simple: after llama_decode call=%d n_tokens=%d", n_decode + 1, batch.n_tokens);
+        mem_footprint_print(after_decode_label);
 
         n_pos += batch.n_tokens;
 
@@ -216,8 +314,11 @@ int main(int argc, char ** argv) {
     fprintf(stderr, "\n");
 
     llama_sampler_free(smpl);
+    mem_footprint_print("llama-simple: after llama_sampler_free");
     llama_free(ctx);
+    mem_footprint_print("llama-simple: after llama_free");
     llama_model_free(model);
+    mem_footprint_print("llama-simple: after llama_model_free");
 
     return 0;
 }
