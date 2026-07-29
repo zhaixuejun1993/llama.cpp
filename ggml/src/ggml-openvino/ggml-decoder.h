@@ -11,6 +11,7 @@
 #include <memory>
 #include <openvino/core/partial_shape.hpp>
 #include <optional>
+#include <set>
 #include <vector>
 
 struct ModelParams {
@@ -266,6 +267,8 @@ public:
 
     static std::map<std::string, std::shared_ptr<ov::Node>> create_weight_nodes(ggml_cgraph * cgraph,
                                                                                 bool naive = false);
+
+    static std::set<std::string> collect_weight_names(ggml_cgraph * cgraph);
 
     const ggml_tensor * get_tensor_used_op(const ggml_tensor * tensor) const;
 
