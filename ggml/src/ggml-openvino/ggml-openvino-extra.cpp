@@ -32,6 +32,7 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_DEVICE",
         "GGML_OPENVINO_CACHE_DIR",
         "GGML_OPENVINO_DEBUG_NODE",
+        "GGML_OPENVINO_EASY_PROFILER_FILE",
         // Integer values (use ggml_openvino_getenv_int)
         "GGML_OPENVINO_PREFILL_CHUNK_SIZE",
         // Boolean toggles (treated as int flags via ggml_openvino_getenv_int)

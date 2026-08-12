@@ -8,6 +8,7 @@
 #include "openvino/frontend.h"
 #include "openvino/input_model.h"
 
+#include <easy/profiler.h>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -39,6 +40,31 @@
 // Suppress  deprecation warning for ov::Tensor::data()
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
+static void ov_easy_profiler_dump() {
+    const char * output_file = ggml_openvino_getenv_str("GGML_OPENVINO_EASY_PROFILER_FILE");
+    if (output_file == nullptr || output_file[0] == '\0') {
+        return;
+    }
+
+    const uint32_t blocks = profiler::dumpBlocksToFile(output_file);
+    GGML_LOG_INFO("GGML OpenVINO easy_profiler saved %u blocks to %s\n", blocks, output_file);
+}
+
+static void ov_easy_profiler_start_once() {
+    static const bool enabled = [] {
+        const char * output_file = ggml_openvino_getenv_str("GGML_OPENVINO_EASY_PROFILER_FILE");
+        if (output_file == nullptr || output_file[0] == '\0') {
+            return false;
+        }
+
+        EASY_PROFILER_ENABLE;
+        std::atexit(ov_easy_profiler_dump);
+        GGML_LOG_INFO("GGML OpenVINO easy_profiler capturing to %s\n", output_file);
+        return true;
+    }();
+    (void) enabled;
+}
 
 enum ggml_status ov_graph_compute(ggml_cgraph * cgraph, ggml_backend_t backend) {
     ggml_backend_openvino_context * ctx = (ggml_backend_openvino_context *) backend->context;
@@ -573,6 +599,9 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
 }
 
 enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<ov_runtime_context> r_ctx) {
+    ov_easy_profiler_start_once();
+    EASY_FUNCTION(profiler::colors::Blue);
+
     auto & core = ov_singleton_core();
 
     auto get_prefill_chunk_size = [] {
@@ -600,13 +629,17 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
     std::shared_ptr<ov::InferRequest> infer_request;
     ModelParams m_params;
     ComputeParams c_params;
-    std::tie(m_params, c_params) = GgmlOvDecoder::compute_llm_params(cgraph, is_static);
-
-    const auto * inp_pos = get_inp_pos_tensor(cgraph);
-    const auto is_prefill = get_is_prefill(inp_pos);
+    const ggml_tensor * inp_pos;
+    bool is_prefill;
     graph_key key(cgraph);
     static const bool cache_enabled = !ggml_openvino_getenv_int("GGML_OPENVINO_DISABLE_CACHE");
     bool cache_hit = false;
+
+    EASY_BLOCK("prepare graph params and cache key");
+    std::tie(m_params, c_params) = GgmlOvDecoder::compute_llm_params(cgraph, is_static);
+    inp_pos = get_inp_pos_tensor(cgraph);
+    is_prefill = get_is_prefill(inp_pos);
+    EASY_END_BLOCK;
 
     int64_t decoder_end_time;
     int64_t conversion_end_time;
@@ -618,6 +651,7 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
     std::shared_ptr<decoder_runtime_ctx> entry;
     ModelParams old_m_params;
 
+    EASY_BLOCK("lookup decoder cache");
     if (cache_enabled) {
         std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
         auto it = r_ctx->decoder_cache.find(key);
@@ -635,20 +669,25 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
         entry = std::make_shared<decoder_runtime_ctx>(mutex);
         cache_hit = false;
     }
+    EASY_END_BLOCK;
 
     std::lock_guard<std::mutex> lock(*(entry->mutex));
 
+    EASY_BLOCK("validate cached decoder");
     if (cache_hit) {
         ggml_decoder = entry->ptr;
         old_m_params = ggml_decoder->get_model_params();
         cache_hit = old_m_params.can_reuse_statically(m_params);
     }
+    EASY_END_BLOCK;
 
     std::vector<std::string> ov_input_names_local;
     std::vector<std::string> ov_output_names_local;
 
     if (cache_hit) {
+        EASY_BLOCK("cache hit path");
         std::map<std::string, std::shared_ptr<ov::Node>> model_weights;
+        EASY_BLOCK("cache hit: update decoder state");
         ggml_decoder->m_is_prefill = is_prefill;
         ggml_decoder->set_model_params(m_params);
         ggml_decoder->set_compute_params(c_params);
@@ -656,68 +695,105 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
             ggml_decoder->update_io(cgraph);
         }
         ggml_decoder->add_extra_inputs();
+        EASY_END_BLOCK;
+
         {
+            EASY_BLOCK("cache hit: fetch infer request");
             std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
             infer_request =
                 is_prefill ? r_ctx->infer_request_cache_prefill.at(key) : r_ctx->infer_request_cache.at(key);
             ov_input_names_local = r_ctx->ov_input_names_cache.at(key);
             ov_output_names_local = r_ctx->ov_output_names_cache.at(key);
+            EASY_END_BLOCK;
         }
 
         decoder_end_time = ggml_time_us();
         conversion_end_time = decoder_end_time;
         compile_end_time = decoder_end_time;
+        EASY_END_BLOCK;
     } else {
+        EASY_BLOCK("cache miss path");
+        EASY_BLOCK("cache miss: clear infer requests");
         if (cache_enabled) {
             std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
             r_ctx->infer_request_cache.erase(key);
             r_ctx->infer_request_cache_prefill.erase(key);
         }
+        EASY_END_BLOCK;
 
         std::shared_ptr<ov::Model> model;
-        auto model_weights = GgmlOvDecoder::create_weight_nodes(cgraph);
+        std::map<std::string, std::shared_ptr<ov::Node>> model_weights;
+        EASY_BLOCK("cache miss: create weight nodes");
+        model_weights = GgmlOvDecoder::create_weight_nodes(cgraph);
+        EASY_END_BLOCK;
 
         if (m_params.n_heads_kv == -1) {
             // graph is not a LLM, e.g. context-shift graph
             prefill_chunk_size = inp_pos->ne[0];
         }
-        auto ggml_decoder_prefill = std::make_shared<GgmlOvDecoder>(
+        std::shared_ptr<GgmlOvDecoder> ggml_decoder_prefill;
+        std::shared_ptr<GgmlOvDecoder> ggml_decoder_decode;
+        EASY_BLOCK("cache miss: create decoders");
+        ggml_decoder_prefill = std::make_shared<GgmlOvDecoder>(
             cgraph, m_params, c_params, model_weights, is_static, stateful, false, true, prefill_chunk_size);
-        auto ggml_decoder_decode = std::make_shared<GgmlOvDecoder>(cgraph, m_params, c_params, model_weights, is_static,
-                                                                   stateful, false, false, prefill_chunk_size);
+        ggml_decoder_decode = std::make_shared<GgmlOvDecoder>(cgraph, m_params, c_params, model_weights, is_static,
+                                                               stateful, false, false, prefill_chunk_size);
+        EASY_END_BLOCK;
         decoder_end_time = ggml_time_us();
 
+        std::shared_ptr<ov::Model> model_prefill;
+        std::shared_ptr<ov::Model> model_decode;
+        EASY_BLOCK("cache miss: convert models");
         auto input_model_prefill = std::make_shared<ov::frontend::ggml::InputModel>(ggml_decoder_prefill);
         auto input_model_decode = std::make_shared<ov::frontend::ggml::InputModel>(ggml_decoder_decode);
 
-        auto model_prefill = ov::frontend::ggml::FrontEnd::convert(input_model_prefill);
+        model_prefill = ov::frontend::ggml::FrontEnd::convert(input_model_prefill);
         ggml_decoder_prefill->clear_model_weights();
-        auto model_decode = ov::frontend::ggml::FrontEnd::convert(input_model_decode);
+        model_decode = ov::frontend::ggml::FrontEnd::convert(input_model_decode);
         ggml_decoder_decode->clear_model_weights();
+        EASY_END_BLOCK;
         conversion_end_time = ggml_time_us();
 
         if (ggml_openvino_getenv_int("GGML_OPENVINO_DUMP_IR")) {
+            EASY_BLOCK("cache miss: dump IR");
             char timestamped_filename[64];
             auto timestamp = (long long) ggml_time_us();
             snprintf(timestamped_filename, sizeof(timestamped_filename), "model_prefill_%lld.xml", timestamp);
             ov::serialize(model_prefill, timestamped_filename);
             snprintf(timestamped_filename, sizeof(timestamped_filename), "model_decode_%lld.xml", timestamp);
             ov::serialize(model_decode, timestamped_filename);
+            EASY_END_BLOCK;
         }
 
         ov::CompiledModel compiled_model_prefill;
         ov::CompiledModel compiled_model_decode;
+        EASY_BLOCK("cache miss: compile models");
         auto remote_context = ggml_openvino_get_remote_context();
         if (remote_context.has_value()) {
+            EASY_BLOCK("cache miss: compile prefill model");
             compiled_model_prefill = core.compile_model(model_prefill, remote_context.value(), config);
-            compiled_model_decode = core.compile_model(model_decode, remote_context.value(), config);
-        } else {
-            compiled_model_prefill = core.compile_model(model_prefill, device, config);
-            compiled_model_decode = core.compile_model(model_decode, device, config);
-        }
+            EASY_END_BLOCK;
 
-        auto infer_request_prefill = std::make_shared<ov::InferRequest>(compiled_model_prefill.create_infer_request());
-        auto infer_request_decode = std::make_shared<ov::InferRequest>(compiled_model_decode.create_infer_request());
+            EASY_BLOCK("cache miss: compile decode model");
+            compiled_model_decode = core.compile_model(model_decode, remote_context.value(), config);
+            EASY_END_BLOCK;
+        } else {
+            EASY_BLOCK("cache miss: compile prefill model");
+            compiled_model_prefill = core.compile_model(model_prefill, device, config);
+            EASY_END_BLOCK;
+
+            EASY_BLOCK("cache miss: compile decode model");
+            compiled_model_decode = core.compile_model(model_decode, device, config);
+            EASY_END_BLOCK;
+        }
+        EASY_END_BLOCK;
+
+        std::shared_ptr<ov::InferRequest> infer_request_prefill;
+        std::shared_ptr<ov::InferRequest> infer_request_decode;
+        EASY_BLOCK("cache miss: create infer requests");
+        infer_request_prefill = std::make_shared<ov::InferRequest>(compiled_model_prefill.create_infer_request());
+        infer_request_decode = std::make_shared<ov::InferRequest>(compiled_model_decode.create_infer_request());
+        EASY_END_BLOCK;
         compile_end_time = ggml_time_us();
 
         model = is_prefill ? model_prefill : model_decode;
@@ -725,13 +801,16 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
         infer_request = is_prefill ? infer_request_prefill : infer_request_decode;
         entry->ptr = ggml_decoder;
 
+        EASY_BLOCK("cache miss: collect IO names");
         for (const auto & ov_param : model->get_parameters()) {
             ov_input_names_local.push_back(ov_param->get_friendly_name());
         }
         for (const auto & ov_output : model->get_results()) {
             ov_output_names_local.push_back(ov_output->get_friendly_name());
         }
+        EASY_END_BLOCK;
 
+        EASY_BLOCK("cache miss: store runtime cache");
         if (cache_enabled) {
             std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
             r_ctx->infer_request_cache_prefill[key] = infer_request_prefill;
@@ -739,11 +818,15 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
             r_ctx->ov_input_names_cache[key] = ov_input_names_local;
             r_ctx->ov_output_names_cache[key] = ov_output_names_local;
         }
+        EASY_END_BLOCK;
+        EASY_END_BLOCK;
     }
 
     if (is_prefill) {
+        EASY_BLOCK("prefill path");
         auto inp_len = inp_pos->ne[0];
         for (int chunk_index = 0; chunk_index * prefill_chunk_size < inp_len; chunk_index++) {
+            EASY_BLOCK("prefill: bind inputs");
             for (size_t i = 0; i < ov_input_names_local.size(); i++) {
                 auto param_name = ov_input_names_local[i];
                 auto input_tensor = get_ov_input_tensor_static_prefill(ggml_decoder, param_name, chunk_index);
@@ -754,7 +837,9 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
                     print_input_tensor_info(param_name, input_tensor);
                 }
             }
+            EASY_END_BLOCK;
 
+            EASY_BLOCK("prefill: bind outputs");
             for (size_t i = 0; i < ov_output_names_local.size(); i++) {
                 const auto & model_outputs = ggml_decoder->get_model_outputs();
                 auto model_output_it = model_outputs.find(ov_output_names_local[i]);
@@ -765,21 +850,29 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
                 auto output_tensor = create_ov_output_tensor(ggml_decoder, infer_request, i, ggml_tensor);
                 infer_request->set_output_tensor(i, output_tensor);
             }
+            EASY_END_BLOCK;
 
+            EASY_BLOCK("prefill: infer chunk");
             ov_raw_infer_start = ggml_time_us();
             infer_request->infer();
             ov_raw_infer_total += ggml_time_us() - ov_raw_infer_start;
+            EASY_END_BLOCK;
 
             if (ggml_openvino_getenv_int("GGML_OPENVINO_DEBUG_OUTPUT") ||
                 ggml_openvino_getenv_str("GGML_OPENVINO_DEBUG_NODE")) {
+                EASY_BLOCK("prefill: debug outputs");
                 for (size_t i = 0; i < ov_output_names_local.size(); i++) {
                     const auto output_tensor = infer_request->get_output_tensor(i);
                     print_output_tensor_info(ov_output_names_local[i], output_tensor, output_tensor.data());
                 }
+                EASY_END_BLOCK;
             }
         }
         infer_end_time = ggml_time_us();
+        EASY_END_BLOCK;
     } else {
+        EASY_BLOCK("decode path");
+        EASY_BLOCK("decode: bind inputs");
         for (size_t i = 0; i < ov_input_names_local.size(); i++) {
             auto param_name = ov_input_names_local[i];
             auto input_tensor = get_ov_input_tensor_static_decode(ggml_decoder, param_name);
@@ -790,7 +883,9 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
                 print_input_tensor_info(param_name, input_tensor);
             }
         }
+        EASY_END_BLOCK;
 
+        EASY_BLOCK("decode: bind outputs");
         for (size_t i = 0; i < ov_output_names_local.size(); i++) {
             const auto & model_outputs = ggml_decoder->get_model_outputs();
             auto model_output_it = model_outputs.find(ov_output_names_local[i]);
@@ -801,19 +896,25 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
             auto output_tensor = create_ov_output_tensor(ggml_decoder, infer_request, i, ggml_tensor);
             infer_request->set_output_tensor(i, output_tensor);
         }
+        EASY_END_BLOCK;
 
+        EASY_BLOCK("decode: infer");
         ov_raw_infer_start = ggml_time_us();
         infer_request->infer();
         infer_end_time = ggml_time_us();
         ov_raw_infer_total = infer_end_time - ov_raw_infer_start;
+        EASY_END_BLOCK;
 
         if (ggml_openvino_getenv_int("GGML_OPENVINO_DEBUG_OUTPUT") ||
             ggml_openvino_getenv_str("GGML_OPENVINO_DEBUG_NODE")) {
+            EASY_BLOCK("decode: debug outputs");
             for (size_t i = 0; i < ov_output_names_local.size(); i++) {
                 const auto output_tensor = infer_request->get_output_tensor(i);
                 print_output_tensor_info(ov_output_names_local[i], output_tensor, output_tensor.data());
             }
+            EASY_END_BLOCK;
         }
+        EASY_END_BLOCK;
     }
 
     if (ggml_openvino_getenv_int("GGML_OPENVINO_PROFILING")) {
