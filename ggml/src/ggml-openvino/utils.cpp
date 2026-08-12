@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <future>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -769,6 +770,8 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
         ov::CompiledModel compiled_model_decode;
         EASY_BLOCK("cache miss: compile models");
         auto remote_context = ggml_openvino_get_remote_context();
+        std::future<ov::CompiledModel> compile_prefill_future;
+        std::future<ov::CompiledModel> compile_decode_future;
         if (remote_context.has_value()) {
             EASY_BLOCK("cache miss: compile prefill model");
             compiled_model_prefill = core.compile_model(model_prefill, remote_context.value(), config);
@@ -778,13 +781,21 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
             compiled_model_decode = core.compile_model(model_decode, remote_context.value(), config);
             EASY_END_BLOCK;
         } else {
-            EASY_BLOCK("cache miss: compile prefill model");
-            compiled_model_prefill = core.compile_model(model_prefill, device, config);
-            EASY_END_BLOCK;
-
-            EASY_BLOCK("cache miss: compile decode model");
-            compiled_model_decode = core.compile_model(model_decode, device, config);
-            EASY_END_BLOCK;
+            const std::string compile_device = device;
+            compile_prefill_future = std::async(std::launch::async, [&core, model_prefill, compile_device, &config] {
+                EASY_BLOCK("cache miss: compile prefill model");
+                auto compiled_model = core.compile_model(model_prefill, compile_device, config);
+                EASY_END_BLOCK;
+                return compiled_model;
+            });
+            compile_decode_future = std::async(std::launch::async, [&core, model_decode, compile_device, &config] {
+                EASY_BLOCK("cache miss: compile decode model");
+                auto compiled_model = core.compile_model(model_decode, compile_device, config);
+                EASY_END_BLOCK;
+                return compiled_model;
+            });
+            compiled_model_prefill = compile_prefill_future.get();
+            compiled_model_decode = compile_decode_future.get();
         }
         EASY_END_BLOCK;
 
