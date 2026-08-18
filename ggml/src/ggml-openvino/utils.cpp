@@ -16,13 +16,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <condition_variable>
-#include <exception>
 #include <filesystem>
 #include <unistd.h>
 #include <fstream>
-#include <functional>
-#include <future>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -692,6 +688,24 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
                                                                    stateful, false, false, prefill_chunk_size);
         decoder_end_time = ggml_time_us();
 
+        auto input_model_prefill = std::make_shared<ov::frontend::ggml::InputModel>(ggml_decoder_prefill);
+        auto input_model_decode = std::make_shared<ov::frontend::ggml::InputModel>(ggml_decoder_decode);
+
+        auto model_prefill = ov::frontend::ggml::FrontEnd::convert(input_model_prefill);
+        ggml_decoder_prefill->clear_model_weights();
+        auto model_decode = ov::frontend::ggml::FrontEnd::convert(input_model_decode);
+        ggml_decoder_decode->clear_model_weights();
+        conversion_end_time = ggml_time_us();
+
+        if (ggml_openvino_getenv_int("GGML_OPENVINO_DUMP_IR")) {
+            char timestamped_filename[64];
+            auto timestamp = (long long) ggml_time_us();
+            snprintf(timestamped_filename, sizeof(timestamped_filename), "model_prefill_%lld.xml", timestamp);
+            ov::serialize(model_prefill, timestamped_filename);
+            snprintf(timestamped_filename, sizeof(timestamped_filename), "model_decode_%lld.xml", timestamp);
+            ov::serialize(model_decode, timestamped_filename);
+        }
+
         // GGML_OPENVINO_COMPILE_FROM_IR: the weight Constants are zero-copy views into
         // anonymous host buffers, which the compiler keeps resident for the whole compile.
         // Round-tripping through an on-disk IR makes them file-backed (read_model mmaps the
@@ -700,106 +714,33 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
         // peak. Both models are serialized before the host buffers are dropped, since the
         // release zeroes the pages every Constant still points at.
         std::filesystem::path ir_scratch;
-        const bool compile_from_ir = ggml_openvino_getenv_int("GGML_OPENVINO_COMPILE_FROM_IR");
-        std::string prefill_xml;
-        std::string decode_xml;
-        if (compile_from_ir) {
+        if (ggml_openvino_getenv_int("GGML_OPENVINO_COMPILE_FROM_IR")) {
             ir_scratch = std::filesystem::temp_directory_path() /
                          ("ggml_ov_ir_" + std::to_string(static_cast<long long>(getpid())));
             std::filesystem::create_directories(ir_scratch);
-            prefill_xml = (ir_scratch / "prefill.xml").string();
-            decode_xml = (ir_scratch / "decode.xml").string();
+            const auto prefill_xml = (ir_scratch / "prefill.xml").string();
+            const auto decode_xml = (ir_scratch / "decode.xml").string();
+            ov::serialize(model_prefill, prefill_xml);
+            ov::serialize(model_decode, decode_xml);
+
+            model_prefill.reset();
+            model_decode.reset();
+            if (!ggml_openvino_weight_buffers_released()) {
+                ggml_openvino_release_weight_buffers();
+            }
+
+            model_prefill = core.read_model(prefill_xml);
+            model_decode = core.read_model(decode_xml);
         }
 
-        std::mutex ir_mutex;
-        std::condition_variable ir_cv;
-        int ir_serialized_count = 0;
-        std::exception_ptr ir_exception;
-        const bool dump_ir = ggml_openvino_getenv_int("GGML_OPENVINO_DUMP_IR");
-        const auto dump_ir_timestamp = static_cast<long long>(ggml_time_us());
-
-        auto build_static_model = [&core, &config, compile_from_ir, dump_ir, dump_ir_timestamp, &ir_mutex, &ir_cv,
-                                   &ir_serialized_count, &ir_exception](std::shared_ptr<GgmlOvDecoder> decoder,
-                                                                        const char * tag,
-                                                                        const std::string & ir_xml,
-                                                                        std::shared_ptr<ov::Model> & model,
-                                                                        ov::CompiledModel & compiled_model,
-                                                                        std::shared_ptr<ov::InferRequest> & infer_request,
-                                                                        int64_t & local_conversion_end_time,
-                                                                        int64_t & local_compile_end_time) {
-            auto input_model = std::make_shared<ov::frontend::ggml::InputModel>(decoder);
-            model = ov::frontend::ggml::FrontEnd::convert(input_model);
-            decoder->clear_model_weights();
-            local_conversion_end_time = ggml_time_us();
-
-            if (dump_ir) {
-                char timestamped_filename[64];
-                snprintf(timestamped_filename, sizeof(timestamped_filename), "model_%s_%lld.xml", tag,
-                         dump_ir_timestamp);
-                ov::serialize(model, timestamped_filename);
-            }
-
-            if (compile_from_ir) {
-                try {
-                    ov::serialize(model, ir_xml);
-                    model.reset();
-
-                    std::unique_lock<std::mutex> lock(ir_mutex);
-                    ir_serialized_count++;
-                    if (ir_serialized_count == 2) {
-                        if (!ggml_openvino_weight_buffers_released()) {
-                            ggml_openvino_release_weight_buffers();
-                        }
-                        ir_cv.notify_all();
-                    } else {
-                        ir_cv.wait(lock, [&ir_serialized_count, &ir_exception] {
-                            return ir_serialized_count == 2 || ir_exception != nullptr;
-                        });
-                        if (ir_exception) {
-                            std::rethrow_exception(ir_exception);
-                        }
-                    }
-
-                    lock.unlock();
-                    model = core.read_model(ir_xml);
-                } catch (...) {
-                    {
-                        std::lock_guard<std::mutex> lock(ir_mutex);
-                        if (!ir_exception) {
-                            ir_exception = std::current_exception();
-                        }
-                    }
-                    ir_cv.notify_all();
-                    throw;
-                }
-            }
-
-            compiled_model = core.compile_model(model, device, config);
-            infer_request = std::make_shared<ov::InferRequest>(compiled_model.create_infer_request());
-            local_compile_end_time = ggml_time_us();
-        };
-        std::shared_ptr<ov::Model> model_prefill;
-        std::shared_ptr<ov::Model> model_decode;
         ov::CompiledModel compiled_model_prefill;
         ov::CompiledModel compiled_model_decode;
-        std::shared_ptr<ov::InferRequest> infer_request_prefill;
-        std::shared_ptr<ov::InferRequest> infer_request_decode;
-        int64_t prefill_conversion_end_time;
-        int64_t decode_conversion_end_time;
-        int64_t prefill_compile_end_time;
-        int64_t decode_compile_end_time;
-        auto prefill_future = std::async(std::launch::async, build_static_model, ggml_decoder_prefill, "prefill",
-                                         prefill_xml, std::ref(model_prefill), std::ref(compiled_model_prefill),
-                                         std::ref(infer_request_prefill), std::ref(prefill_conversion_end_time),
-                                         std::ref(prefill_compile_end_time));
-        auto decode_future = std::async(std::launch::async, build_static_model, ggml_decoder_decode, "decode",
-                                        decode_xml, std::ref(model_decode), std::ref(compiled_model_decode),
-                                        std::ref(infer_request_decode), std::ref(decode_conversion_end_time),
-                                        std::ref(decode_compile_end_time));
-        prefill_future.get();
-        decode_future.get();
-        conversion_end_time = std::max(prefill_conversion_end_time, decode_conversion_end_time);
-        compile_end_time = std::max(prefill_compile_end_time, decode_compile_end_time);
+        compiled_model_prefill = core.compile_model(model_prefill, device, config);
+        compiled_model_decode = core.compile_model(model_decode, device, config);
+
+        auto infer_request_prefill = std::make_shared<ov::InferRequest>(compiled_model_prefill.create_infer_request());
+        auto infer_request_decode = std::make_shared<ov::InferRequest>(compiled_model_decode.create_infer_request());
+        compile_end_time = ggml_time_us();
 
         if (!ir_scratch.empty()) {
             std::error_code ec;
