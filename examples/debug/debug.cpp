@@ -5,12 +5,15 @@
 #include "llama.h"
 
 #include <cstdlib>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <optional>
 #include <regex>
+#include <sstream>
 
 static void print_usage(int /*argc*/, char ** argv) {
     const std::string usage_template = R"(
@@ -25,6 +28,10 @@ static void print_usage(int /*argc*/, char ** argv) {
           Save logits/embeddings:
 
           {prog} -m model.gguf -p "Hello my name is" --save-logits
+
+          Compare a fixed token prompt and deterministic continuation:
+
+          {prog} -m model.gguf --token-ids-file tokens.txt --save-logits -n 8
 
           Add --embedding to save embeddings)" "\n";
 
@@ -52,11 +59,11 @@ struct output_data {
     std::string              prompt;
     std::vector<llama_token> tokens;
 
-    output_data(llama_context * ctx, const llama_model * model, const common_params & params) {
+    output_data(llama_context * ctx, const llama_model * model, const common_params & params,
+                const std::vector<llama_token> & prompt_tokens) {
         const llama_vocab * vocab = llama_model_get_vocab(model);
-        const bool add_bos = llama_vocab_get_add_bos(vocab);
 
-        tokens = common_tokenize(ctx, params.prompt, add_bos);
+        tokens = prompt_tokens;
         prompt = params.prompt;
 
         if (params.embedding) {
@@ -96,6 +103,33 @@ struct output_data {
         }
     }
 };
+
+static std::vector<llama_token> load_token_ids(const std::string & path) {
+    std::ifstream input(path);
+    if (!input) {
+        throw std::runtime_error("failed to open token IDs file: " + path);
+    }
+
+    std::string contents((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    std::replace(contents.begin(), contents.end(), ',', ' ');
+
+    std::istringstream stream(contents);
+    std::vector<llama_token> token_ids;
+    int64_t token_id;
+    while (stream >> token_id) {
+        if (token_id < std::numeric_limits<llama_token>::min() || token_id > std::numeric_limits<llama_token>::max()) {
+            throw std::runtime_error("token ID is out of range in file: " + path);
+        }
+        token_ids.push_back(static_cast<llama_token>(token_id));
+    }
+    if (!stream.eof()) {
+        throw std::runtime_error("invalid token ID in file: " + path);
+    }
+    if (token_ids.empty()) {
+        throw std::runtime_error("token IDs file is empty: " + path);
+    }
+    return token_ids;
+}
 
 static void save_output_data(const output_data & output, const std::string & model_name, const std::string & output_dir) {
     std::filesystem::create_directory(output_dir);
@@ -181,13 +215,54 @@ static void print_tokenized_prompt(llama_context * ctx, const std::vector<llama_
     LOG("\n");
 }
 
+static bool generate_greedy(llama_context * ctx, const llama_vocab * vocab, int32_t token_count,
+                            std::vector<llama_token> & generated_tokens) {
+    const int32_t vocab_size = llama_vocab_n_tokens(vocab);
+    for (int32_t i = 0; i < token_count; ++i) {
+        const float * logits = llama_get_logits_ith(ctx, -1);
+        if (logits == nullptr) {
+            LOG_ERR("failed to get logits for generated token %d\n", i);
+            return false;
+        }
+
+        const llama_token token = static_cast<llama_token>(
+            std::max_element(logits, logits + vocab_size) - logits);
+        generated_tokens.push_back(token);
+
+        if (i + 1 < token_count && llama_decode(ctx, llama_batch_get_one(&generated_tokens.back(), 1))) {
+            LOG_ERR("failed to decode generated token %d\n", i);
+            return false;
+        }
+    }
+    return true;
+}
+
+static void save_generated_tokens(const std::vector<llama_token> & tokens, const std::string & model_name,
+                                  const std::string & output_dir) {
+    const auto filepath = std::filesystem::path{output_dir} / ("llamacpp-" + model_name + "-generated.txt");
+    std::ofstream file{filepath};
+    if (!file) {
+        throw std::runtime_error("failed to open generated token file: " + filepath.string());
+    }
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        file << tokens[i] << (i + 1 < tokens.size() ? ' ' : '\n');
+    }
+    LOG("Generated token IDs saved to %s\n", filepath.c_str());
+}
+
 static bool run(llama_context * ctx, const common_params & params) {
     const llama_model * model = llama_get_model(ctx);
     const llama_vocab * vocab = llama_model_get_vocab(model);
 
-    const bool add_bos = llama_vocab_get_add_bos(vocab);
-
-    std::vector<llama_token> tokens = common_tokenize(ctx, params.prompt, add_bos);
+    std::vector<llama_token> tokens;
+    try {
+        tokens = params.token_ids_file.empty() ?
+                     common_tokenize(ctx, params.prompt, llama_vocab_get_add_bos(vocab)) :
+                     load_token_ids(params.token_ids_file);
+    } catch (const std::exception & e) {
+        LOG_ERR("%s : %s\n", __func__, e.what());
+        return false;
+    }
 
     if (tokens.empty()) {
         LOG_ERR("%s : there are not input tokens to process - (try to provide a prompt with '-p')\n", __func__);
@@ -203,10 +278,18 @@ static bool run(llama_context * ctx, const common_params & params) {
 
     if (params.save_logits) {
         try {
-            output_data output {ctx, model, params};
+            output_data output {ctx, model, params, tokens};
             std::filesystem::path model_path{params.model.path};
             std::string model_name{model_path.stem().string()};
             save_output_data(output, model_name, params.logits_output_dir);
+
+            if (params.n_predict > 0) {
+                std::vector<llama_token> generated_tokens;
+                if (!generate_greedy(ctx, vocab, params.n_predict, generated_tokens)) {
+                    return false;
+                }
+                save_generated_tokens(generated_tokens, model_name, params.logits_output_dir);
+            }
         } catch (const std::exception & e) {
             LOG_ERR("%s : error saving logits: %s\n", __func__, e.what());
         }

@@ -518,6 +518,7 @@ struct common_params {
     std::string path_prompts_log_dir = ""; // directory with logged prompts                                 // NOLINT
 
     // llama-debug specific options
+    std::string token_ids_file    = "";     // fixed prompt token IDs, bypassing tokenization                // NOLINT
     std::string logits_output_dir = "data"; // directory for saving logits output files                     // NOLINT
     bool        save_logits       = false;  // whether to save logits to files                              // NOLINT
     std::vector<std::string> tensor_filter; // filter tensor names for debug output (regex)                 // NOLINT

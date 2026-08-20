@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <fstream>
 #include <iterator>
 #include <map>
 #include <numeric>
@@ -386,6 +387,8 @@ struct cmd_params {
     bool                             verbose;
     bool                             progress;
     bool                             no_warmup;
+    std::string                      token_ids_file;
+    std::string                      iteration_timing_csv;
     output_formats                   output_format;
     output_formats                   output_format_stderr;
 };
@@ -430,6 +433,8 @@ static const cmd_params cmd_params_defaults = {
     /* verbose              */ false,
     /* progress             */ false,
     /* no_warmup            */ false,
+    /* token_ids_file       */ "",
+    /* iteration_timing_csv */ "",
     /* output_format        */ MARKDOWN,
     /* output_format_stderr */ NONE,
 };
@@ -449,6 +454,8 @@ static void print_usage(int /* argc */, char ** argv) {
     printf("  -v, --verbose                               verbose output\n");
     printf("  --progress                                  print test progress indicators\n");
     printf("  --no-warmup                                 skip warmup runs before benchmarking\n");
+    printf("  --token-ids-file <filename>                 use fixed prompt token IDs from a whitespace/comma-separated file\n");
+    printf("  --iteration-timing-csv <filename>           write per-iteration host timings to CSV\n");
     printf("  -fitt, --fit-target <MiB>                   fit model to device memory with this margin per device in MiB (default: off)\n");
     printf("  -fitc, --fit-ctx <n>                        minimum ctx size for --fit-target (default: 4096)\n");
     if (llama_supports_rpc()) {
@@ -547,6 +554,8 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
     params.delay                = cmd_params_defaults.delay;
     params.progress             = cmd_params_defaults.progress;
     params.no_warmup            = cmd_params_defaults.no_warmup;
+    params.token_ids_file       = cmd_params_defaults.token_ids_file;
+    params.iteration_timing_csv = cmd_params_defaults.iteration_timing_csv;
     params.offline              = cmd_params_defaults.offline;
 
     if (const char * env = getenv("HF_TOKEN")) {
@@ -1078,6 +1087,18 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
                 params.progress = true;
             } else if (arg == "--no-warmup") {
                 params.no_warmup = true;
+            } else if (arg == "--token-ids-file") {
+                if (++i >= argc) {
+                    invalid_param = true;
+                    break;
+                }
+                params.token_ids_file = argv[i];
+            } else if (arg == "--iteration-timing-csv") {
+                if (++i >= argc) {
+                    invalid_param = true;
+                    break;
+                }
+                params.iteration_timing_csv = argv[i];
             } else if (arg == "-fitt" || arg == "--fit-target") {
                 if (++i >= argc) {
                     invalid_param = true;
@@ -2149,12 +2170,99 @@ struct ctx_state {
     std::vector<uint8_t> buf; // the llama_context state buffer
 };
 
-static bool test_prompt(llama_context * ctx, int n_prompt, int n_batch, int n_threads) {
+static std::vector<llama_token> load_token_ids(const std::string & path) {
+    std::ifstream input(path);
+    if (!input) {
+        throw std::runtime_error("failed to open token IDs file: " + path);
+    }
+
+    std::string contents((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    std::replace(contents.begin(), contents.end(), ',', ' ');
+
+    std::istringstream stream(contents);
+    std::vector<llama_token> token_ids;
+    int64_t token_id;
+    while (stream >> token_id) {
+        if (token_id < std::numeric_limits<llama_token>::min() || token_id > std::numeric_limits<llama_token>::max()) {
+            throw std::runtime_error("token ID is out of range in file: " + path);
+        }
+        token_ids.push_back(static_cast<llama_token>(token_id));
+    }
+    if (!stream.eof()) {
+        throw std::runtime_error("invalid token ID in file: " + path);
+    }
+    if (token_ids.empty()) {
+        throw std::runtime_error("token IDs file is empty: " + path);
+    }
+    return token_ids;
+}
+
+struct npu_telemetry {
+    std::string current_frequency_mhz;
+    std::string max_frequency_mhz;
+    std::string busy_time_us;
+    std::string memory_utilization;
+    std::string power_state;
+};
+
+static std::string read_text_file(const std::string & path) {
+    std::ifstream input(path);
+    std::string value;
+    if (input) {
+        std::getline(input, value);
+    }
+    return value;
+}
+
+static npu_telemetry read_npu_telemetry() {
+    const char * sysfs_dir_env = std::getenv("NPU_SYSFS_DIR");
+    const std::string sysfs_dir = sysfs_dir_env && sysfs_dir_env[0] != '\0'
+        ? sysfs_dir_env
+        : "/sys/class/accel/accel0/device";
+    return {
+        read_text_file(sysfs_dir + "/npu_current_frequency_mhz"),
+        read_text_file(sysfs_dir + "/npu_max_frequency_mhz"),
+        read_text_file(sysfs_dir + "/npu_busy_time_us"),
+        read_text_file(sysfs_dir + "/npu_memory_utilization"),
+        read_text_file(sysfs_dir + "/power_state"),
+    };
+}
+
+static void dump_iteration_timing_csv(const std::string & path, const char * phase, int iteration,
+                                      int prompt_tokens, int generation_tokens, uint64_t total_ns,
+                                      const npu_telemetry & before, const npu_telemetry & after) {
+    if (path.empty()) {
+        return;
+    }
+
+    std::ofstream output(path, std::ios::app);
+    if (!output) {
+        throw std::runtime_error("failed to open iteration timing CSV: " + path);
+    }
+    if (output.tellp() == 0) {
+        output << "sequence,phase,iteration,prompt_tokens,generation_tokens,total_us,freq_before_mhz,freq_after_mhz,max_freq_mhz,busy_before_us,busy_after_us,memory_before,memory_after,power_before,power_after\n";
+    }
+    static uint64_t sequence = 0;
+    output << sequence++ << ',' << phase << ',' << iteration << ',' << prompt_tokens << ',' << generation_tokens << ','
+           << total_ns / 1000 << ',' << before.current_frequency_mhz << ',' << after.current_frequency_mhz << ','
+           << after.max_frequency_mhz << ',' << before.busy_time_us << ',' << after.busy_time_us << ','
+           << before.memory_utilization << ',' << after.memory_utilization << ',' << before.power_state << ','
+           << after.power_state << '\n';
+}
+
+static bool test_prompt(llama_context * ctx, int n_prompt, int n_batch, int n_threads,
+            const std::vector<llama_token> * fixed_tokens = nullptr) {
     llama_set_n_threads(ctx, n_threads, n_threads);
 
     const llama_model * model   = llama_get_model(ctx);
     const llama_vocab * vocab   = llama_model_get_vocab(model);
     const int32_t       n_vocab = llama_vocab_n_tokens(vocab);
+
+    if (fixed_tokens && fixed_tokens->size() < static_cast<size_t>(n_prompt)) {
+        fprintf(stderr, "%s: token IDs file contains %zu tokens, but test requires %d\n",
+                __func__, fixed_tokens->size(), n_prompt);
+        return false;
+    }
 
     std::vector<llama_token> tokens(n_batch);
 
@@ -2162,9 +2270,20 @@ static bool test_prompt(llama_context * ctx, int n_prompt, int n_batch, int n_th
 
     while (n_processed < n_prompt) {
         int n_tokens = std::min(n_prompt - n_processed, n_batch);
-        tokens[0]    = n_processed == 0 && llama_vocab_get_add_bos(vocab) ? llama_vocab_bos(vocab) : std::rand() % n_vocab;
-        for (int i = 1; i < n_tokens; i++) {
-            tokens[i] = std::rand() % n_vocab;
+        if (fixed_tokens) {
+            std::copy_n(fixed_tokens->data() + n_processed, n_tokens, tokens.data());
+            for (int i = 0; i < n_tokens; i++) {
+                if (tokens[i] < 0 || tokens[i] >= n_vocab) {
+                    fprintf(stderr, "%s: token ID %d at index %d is outside vocabulary [0, %d)\n",
+                            __func__, tokens[i], n_processed + i, n_vocab);
+                    return false;
+                }
+            }
+        } else {
+            tokens[0] = n_processed == 0 && llama_vocab_get_add_bos(vocab) ? llama_vocab_bos(vocab) : std::rand() % n_vocab;
+            for (int i = 1; i < n_tokens; i++) {
+                tokens[i] = std::rand() % n_vocab;
+            }
         }
         int res = llama_decode(ctx, llama_batch_get_one(tokens.data(), n_tokens));
         if (res != 0) {
@@ -2275,6 +2394,17 @@ int llama_bench(int argc, char ** argv) {
     // initialize printer
     std::unique_ptr<printer> p     = create_printer(params.output_format);
     std::unique_ptr<printer> p_err = create_printer(params.output_format_stderr);
+
+    std::vector<llama_token> fixed_tokens;
+    if (!params.token_ids_file.empty()) {
+        try {
+            fixed_tokens = load_token_ids(params.token_ids_file);
+        } catch (const std::exception & e) {
+            fprintf(stderr, "error: %s\n", e.what());
+            return 1;
+        }
+    }
+    const std::vector<llama_token> * prompt_tokens = fixed_tokens.empty() ? nullptr : &fixed_tokens;
 
     if (p) {
         p->fout = stdout;
@@ -2404,9 +2534,11 @@ int llama_bench(int argc, char ** argv) {
                 }
                 //test_prompt(ctx, std::min(t.n_batch, std::min(t.n_prompt, 32)), 0, t.n_batch, t.n_threads);
                 bool res;
+                const auto telemetry_before = read_npu_telemetry();
+                const auto warmup_start = get_time_ns();
                 {
                     EASY_BLOCK("warmup prompt");
-                    res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads);
+                    res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads, prompt_tokens);
                 }
                 if (!res) {
                     fprintf(stderr, "%s: error: failed to run prompt warmup\n", __func__);
@@ -2414,6 +2546,9 @@ int llama_bench(int argc, char ** argv) {
                     llama_model_free(lmodel);
                     exit(1);
                 }
+                const auto telemetry_after = read_npu_telemetry();
+                dump_iteration_timing_csv(params.iteration_timing_csv, "warmup_prompt", 0, t.n_prompt, 0,
+                                          get_time_ns() - warmup_start, telemetry_before, telemetry_after);
             }
             if (t.n_gen > 0) {
                 if (params.progress) {
@@ -2456,7 +2591,7 @@ int llama_bench(int argc, char ** argv) {
                     bool res;
                     {
                         EASY_BLOCK("depth run");
-                        res = test_prompt(ctx, t.n_depth, t.n_batch, t.n_threads);
+                        res = test_prompt(ctx, t.n_depth, t.n_batch, t.n_threads, prompt_tokens);
                     }
                     if (!res) {
                         fprintf(stderr, "%s: error: failed to run depth\n", __func__);
@@ -2477,6 +2612,7 @@ int llama_bench(int argc, char ** argv) {
                 }
             }
 
+            const auto telemetry_before = read_npu_telemetry();
             uint64_t t_start = get_time_ns();
 
             if (t.n_prompt > 0) {
@@ -2487,7 +2623,7 @@ int llama_bench(int argc, char ** argv) {
                 bool res;
                 {
                     EASY_BLOCK("prompt run");
-                    res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads);
+                    res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads, prompt_tokens);
                 }
                 if (!res) {
                     fprintf(stderr, "%s: error: failed to run prompt\n", __func__);
@@ -2515,7 +2651,10 @@ int llama_bench(int argc, char ** argv) {
             }
 
             uint64_t t_ns = get_time_ns() - t_start;
+            const auto telemetry_after = read_npu_telemetry();
             t.samples_ns.push_back(t_ns);
+            dump_iteration_timing_csv(params.iteration_timing_csv, "measured", i, t.n_prompt, t.n_gen, t_ns,
+                                      telemetry_before, telemetry_after);
         }
 
         if (p) {

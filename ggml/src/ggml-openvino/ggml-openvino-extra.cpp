@@ -35,7 +35,14 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_NPUW_FUNCALL_FOR_ALL",
         "GGML_OPENVINO_NPUW_UNFOLD_IREQS",
         "GGML_OPENVINO_COMPILATION_NUM_THREADS",
+        "GGML_OPENVINO_NPU_COMPILATION_MODE_PARAMS",
         "GGML_OPENVINO_NPU_CONFIG",
+        "GGML_OPENVINO_PROFILE_CSV",
+        "GGML_OPENVINO_TIMING_CSV",
+        "GGML_OPENVINO_OUTPUT_SAMPLE_CSV",
+        "GGML_OPENVINO_PREFILL_KV_OUTPUT_MODE",
+        "GGML_OPENVINO_PREFILL_KV_BOUND_COUNT",
+        "GGML_OPENVINO_NPU_REQUANT_POLICY",
         // Integer values (use ggml_openvino_getenv_int)
         "GGML_OPENVINO_PREFILL_CHUNK_SIZE",
         // Boolean toggles (treated as int flags via ggml_openvino_getenv_int)
@@ -118,6 +125,11 @@ void ggml_openvino_device_config::init() {
         if (num_threads && strlen(num_threads) > 0) {
             compile_config["COMPILATION_NUM_THREADS"] = num_threads;
         }
+        const char * compilation_mode_params =
+            ggml_openvino_getenv_str("GGML_OPENVINO_NPU_COMPILATION_MODE_PARAMS");
+        if (compilation_mode_params && strlen(compilation_mode_params) > 0) {
+            compile_config["NPU_COMPILATION_MODE_PARAMS"] = compilation_mode_params;
+        }
         // Comma-separated KEY=VALUE pairs appended last, so they override anything above.
         // Escape hatch for bisecting plugin options without a rebuild.
         const char * extra_config = ggml_openvino_getenv_str("GGML_OPENVINO_NPU_CONFIG");
@@ -137,6 +149,9 @@ void ggml_openvino_device_config::init() {
                 }
                 pos = comma + 1;
             }
+        }
+        if (ggml_openvino_getenv_int("GGML_OPENVINO_PROFILING")) {
+            compile_config.insert(ov::enable_profiling(true));
         }
     } else if (cache_dir && strlen(cache_dir) > 0) {
         compile_config.insert(ov::cache_dir(cache_dir));
@@ -291,6 +306,17 @@ clEnqueueMemcpyINTEL_fn ggml_openvino_get_clEnqueueMemcpyINTEL() {
     return fn;
 }
 
+ExtraQuantType ggml_openvino_get_npu_requant_type() {
+    const std::string policy = ggml_openvino_getenv_str("GGML_OPENVINO_NPU_REQUANT_POLICY", "group-128");
+    if (policy == "group-128") {
+        return ExtraQuantType::Q4_0_128;
+    }
+    if (policy == "channel-wise") {
+        return ExtraQuantType::Q4_0_C;
+    }
+    GGML_ABORT("Unknown GGML_OPENVINO_NPU_REQUANT_POLICY: %s", policy.c_str());
+}
+
 // Get requantization type for a tensor type (returns nullopt if no requant needed)
 std::optional<ExtraQuantType> ggml_openvino_get_requant_type(const ggml_tensor * tensor, bool no_requant) {
     if (no_requant) {
@@ -322,7 +348,7 @@ std::optional<ExtraQuantType> ggml_openvino_get_requant_type(const ggml_tensor *
         if (tensor->type == GGML_TYPE_Q4_0 && ggml_openvino_getenv_int("GGML_OPENVINO_NPU_KEEP_Q4_0")) {
             return std::nullopt;
         }
-        return ExtraQuantType::Q4_0_128;
+        return ggml_openvino_get_npu_requant_type();
     }
     switch (tensor->type) {
     case GGML_TYPE_Q6_K:
