@@ -37,6 +37,7 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_COMPILATION_NUM_THREADS",
         "GGML_OPENVINO_NPU_COMPILATION_MODE_PARAMS",
         "GGML_OPENVINO_NPU_CONFIG",
+        "GGML_OPENVINO_NPU_REQUANT_POLICY",
         // Integer values (use ggml_openvino_getenv_int)
         "GGML_OPENVINO_PREFILL_CHUNK_SIZE",
         // Boolean toggles (treated as int flags via ggml_openvino_getenv_int)
@@ -297,6 +298,17 @@ clEnqueueMemcpyINTEL_fn ggml_openvino_get_clEnqueueMemcpyINTEL() {
     return fn;
 }
 
+ExtraQuantType ggml_openvino_get_npu_requant_type() {
+    const std::string policy = ggml_openvino_getenv_str("GGML_OPENVINO_NPU_REQUANT_POLICY", "group-128");
+    if (policy == "group-128") {
+        return ExtraQuantType::Q4_0_128;
+    }
+    if (policy == "channel-wise") {
+        return ExtraQuantType::Q4_0_C;
+    }
+    GGML_ABORT("Unknown GGML_OPENVINO_NPU_REQUANT_POLICY: %s", policy.c_str());
+}
+
 // Get requantization type for a tensor type (returns nullopt if no requant needed)
 std::optional<ExtraQuantType> ggml_openvino_get_requant_type(const ggml_tensor * tensor, bool no_requant) {
     if (no_requant) {
@@ -328,7 +340,7 @@ std::optional<ExtraQuantType> ggml_openvino_get_requant_type(const ggml_tensor *
         if (tensor->type == GGML_TYPE_Q4_0 && ggml_openvino_getenv_int("GGML_OPENVINO_NPU_KEEP_Q4_0")) {
             return std::nullopt;
         }
-        return ExtraQuantType::Q4_0_128;
+        return ggml_openvino_get_npu_requant_type();
     }
     switch (tensor->type) {
     case GGML_TYPE_Q6_K:
