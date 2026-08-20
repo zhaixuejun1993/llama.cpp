@@ -16,13 +16,6 @@ llama-debug \
   --save-logits \
   --verbose
 ```
-
-For a tokenization-independent comparison, pass a whitespace- or comma-separated
-token ID file. `-n 8` also saves an eight-token greedy continuation:
-
-```shell
-llama-debug -m model.gguf --token-ids-file tokens.txt --save-logits -n 8
-```
 The tensor data is logged as debug and required the --verbose flag. The reason
 for this is that while useful for a model with many layers there can be a lot of
 output. You can filter the tensor names using the `--tensor-filter` option.
@@ -44,7 +37,6 @@ $ llama-debug --help
 
 --save-logits                           save final logits to files for verification (default: false)
 --logits-output-dir PATH                directory for saving logits output files (default: data)
---token-ids-file PATH                   use fixed prompt token IDs from a whitespace/comma-separated file
 --tensor-filter REGEX                   filter tensor names for debug output (regex pattern, can be specified multiple times)
 ```
 
@@ -57,7 +49,6 @@ directory:
 * `llamacpp-<model>[-embeddings].txt`        - Text output (logits or embeddings, one per line)
 * `llamacpp-<model>[-embeddings]-prompt.txt` - Prompt text and token IDs
 * `llamacpp-<model>[-embeddings]-tokens.bin` - Binary token IDs for programmatic comparison
-* `llamacpp-<model>-generated.txt`            - Greedy generated token IDs when `-n` is positive
 
 These files can be compared against the original model's output to verify the
 converted model.

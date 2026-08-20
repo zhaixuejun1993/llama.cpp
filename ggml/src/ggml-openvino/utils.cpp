@@ -43,149 +43,6 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
-static std::string profiling_csv_escape(const std::string & value) {
-    std::string escaped = "\"";
-    for (const char ch : value) {
-        escaped += ch == '"' ? "\"\"" : std::string(1, ch);
-    }
-    return escaped + "\"";
-}
-
-static void dump_profiling_csv(const ov::InferRequest & request) {
-    const char * output_path = ggml_openvino_getenv_str("GGML_OPENVINO_PROFILE_CSV");
-    if (!output_path || !*output_path) {
-        return;
-    }
-
-    std::ofstream output(output_path, std::ios::app);
-    GGML_ASSERT(output);
-    if (output.tellp() == 0) {
-        output << "node_name,node_type,exec_type,status,real_time_us,cpu_time_us,start_time_us\n";
-    }
-    for (const auto & record : request.get_profiling_info()) {
-        output << profiling_csv_escape(record.node_name) << ',' << profiling_csv_escape(record.node_type) << ','
-               << profiling_csv_escape(record.exec_type) << ',' << static_cast<int>(record.status) << ','
-               << record.real_time.count() << ',' << record.cpu_time.count() << ',' << record.start_time.count()
-               << '\n';
-    }
-}
-
-static void dump_output_sample_csv(ov::InferRequest & request, const std::vector<std::string> & output_names,
-                                   const char * phase) {
-    const char * output_path = ggml_openvino_getenv_str("GGML_OPENVINO_OUTPUT_SAMPLE_CSV");
-    if (!output_path || !*output_path) {
-        return;
-    }
-
-    static uint64_t sequence = 0;
-    std::ofstream output(output_path, std::ios::app);
-    GGML_ASSERT(output);
-    if (output.tellp() == 0) {
-        output << "sequence,phase,output_index,output_name,element_type,element_count,sample_index,value\n";
-    }
-
-    constexpr size_t max_samples = 33;
-    for (size_t output_index = 0; output_index < output_names.size(); ++output_index) {
-        const auto tensor = request.get_output_tensor(output_index);
-        const size_t element_count = tensor.get_size();
-        const size_t sample_count = std::min(max_samples, element_count);
-        if (sample_count == 0 ||
-            (tensor.get_element_type() != ov::element::f16 && tensor.get_element_type() != ov::element::f32)) {
-            continue;
-        }
-
-        for (size_t sample = 0; sample < sample_count; ++sample) {
-            const size_t sample_index = sample_count == 1 ? 0 : sample * (element_count - 1) / (sample_count - 1);
-            const float value = tensor.get_element_type() == ov::element::f16 ?
-                                    static_cast<float>(tensor.data<ov::float16>()[sample_index]) :
-                                    tensor.data<float>()[sample_index];
-            output << sequence << ',' << phase << ',' << output_index << ','
-                   << profiling_csv_escape(output_names[output_index]) << ',' << tensor.get_element_type() << ','
-                   << element_count << ',' << sample_index << ',' << std::setprecision(9) << value << '\n';
-        }
-    }
-    ++sequence;
-}
-
-static uint64_t timing_config_fingerprint() {
-    std::string config;
-    for (const char * name : {
-             "GGML_OPENVINO_DEVICE",
-             "GGML_OPENVINO_PREFILL_CHUNK_SIZE",
-             "GGML_OPENVINO_NPU_COMPILER_TYPE",
-             "GGML_OPENVINO_NPU_COMPILATION_MODE_PARAMS",
-             "GGML_OPENVINO_NPU_CONFIG",
-             "GGML_OPENVINO_NPUW_FUNCALL_FOR_ALL",
-             "GGML_OPENVINO_NPU_REQUANT_POLICY",
-         }) {
-        config += name;
-        config += '=';
-        config += ggml_openvino_getenv_str(name, "");
-        config += ';';
-    }
-
-    uint64_t hash = 1469598103934665603ULL;
-    for (const unsigned char ch : config) {
-        hash ^= ch;
-        hash *= 1099511628211ULL;
-    }
-    return hash;
-}
-
-enum class prefill_kv_output_mode {
-    current,
-    plugin_owned,
-    explicit_copy,
-};
-
-static prefill_kv_output_mode get_prefill_kv_output_mode() {
-    const std::string mode = ggml_openvino_getenv_str("GGML_OPENVINO_PREFILL_KV_OUTPUT_MODE", "current");
-    if (mode == "current") {
-        return prefill_kv_output_mode::current;
-    }
-    if (mode == "plugin-owned") {
-        return prefill_kv_output_mode::plugin_owned;
-    }
-    if (mode == "explicit-copy") {
-        return prefill_kv_output_mode::explicit_copy;
-    }
-    GGML_ABORT("Unknown GGML_OPENVINO_PREFILL_KV_OUTPUT_MODE: %s", mode.c_str());
-}
-
-static const char * get_prefill_kv_output_mode_name(prefill_kv_output_mode mode) {
-    switch (mode) {
-        case prefill_kv_output_mode::current:       return "current";
-        case prefill_kv_output_mode::plugin_owned:  return "plugin-owned";
-        case prefill_kv_output_mode::explicit_copy: return "explicit-copy";
-    }
-    GGML_ABORT("Unknown prefill KV output mode");
-}
-
-static void dump_timing_csv(bool is_prefill, bool cache_hit, int chunk_index, int64_t token_count,
-                            size_t input_count, size_t output_count, int64_t bind_us, int64_t infer_us,
-                            int64_t total_us, const char * kv_output_mode = "current",
-                            size_t bound_output_count = 0, size_t kv_output_count = 0,
-                            size_t kv_valid_bytes = 0, size_t kv_buffer_bytes = 0, size_t bound_kv_bytes = 0,
-                            int64_t kv_copy_us = 0, int64_t kv_checksum_us = 0, size_t kv_checksum = 0) {
-    const char * output_path = ggml_openvino_getenv_str("GGML_OPENVINO_TIMING_CSV");
-    if (!output_path || !*output_path) {
-        return;
-    }
-
-    static uint64_t sequence = 0;
-    std::ofstream output(output_path, std::ios::app);
-    GGML_ASSERT(output);
-    if (output.tellp() == 0) {
-        output << "sequence,phase,is_prefill,cache_hit,chunk_index,token_count,input_count,output_count,bind_us,infer_us,total_us,config_fingerprint,kv_output_mode,bound_output_count,kv_output_count,kv_valid_bytes,kv_buffer_bytes,bound_kv_bytes,kv_copy_us,kv_checksum_us,kv_checksum\n";
-    }
-    output << sequence++ << ",openvino_static," << is_prefill << ',' << cache_hit << ',' << chunk_index << ','
-           << token_count << ',' << input_count << ',' << output_count << ',' << bind_us << ',' << infer_us << ','
-           << total_us << ',' << std::hex << timing_config_fingerprint() << std::dec << ',' << kv_output_mode << ','
-           << bound_output_count << ',' << kv_output_count << ',' << kv_valid_bytes << ',' << kv_buffer_bytes << ','
-           << bound_kv_bytes << ',' << kv_copy_us << ',' << kv_checksum_us << ',' << std::hex << kv_checksum
-           << std::dec << '\n';
-}
-
 enum ggml_status ov_graph_compute(ggml_cgraph * cgraph, ggml_backend_t backend) {
     ggml_backend_openvino_context * ctx = (ggml_backend_openvino_context *) backend->context;
     try {
@@ -671,8 +528,6 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
 
         ov_raw_infer_start = ggml_time_us();
         infer_request->infer();
-        dump_profiling_csv(*infer_request);
-        dump_output_sample_csv(*infer_request, ov_output_names, "dynamic");
         infer_end_time = ggml_time_us();
 
         if (ggml_openvino_getenv_int("GGML_OPENVINO_DEBUG_OUTPUT")) {
@@ -918,12 +773,7 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
 
     if (is_prefill) {
         auto inp_len = inp_pos->ne[0];
-        const auto kv_output_mode = get_prefill_kv_output_mode();
-        const int configured_bound_kv_count =
-            ggml_openvino_getenv_int("GGML_OPENVINO_PREFILL_KV_BOUND_COUNT", -1);
-        GGML_ASSERT(configured_bound_kv_count >= -1);
         for (int chunk_index = 0; chunk_index * prefill_chunk_size < inp_len; chunk_index++) {
-            const auto bind_start = ggml_time_us();
             for (size_t i = 0; i < ov_input_names_local.size(); i++) {
                 auto param_name = ov_input_names_local[i];
                 auto input_tensor = get_ov_input_tensor_static_prefill(ggml_decoder, param_name, chunk_index);
@@ -935,74 +785,15 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
                 }
             }
 
-            std::vector<std::pair<size_t, ggml_tensor *>> kv_outputs;
-            size_t bound_output_count = 0;
-            size_t kv_valid_bytes = 0;
-            size_t kv_buffer_bytes = 0;
-            size_t bound_kv_bytes = 0;
             for (size_t i = 0; i < ov_output_names_local.size(); i++) {
                 auto * ggml_tensor = ggml_decoder->get_model_outputs().at(ov_output_names_local[i]);
-                const bool is_kv_output = GgmlOvDecoder::is_kvcache(ggml_tensor, nullptr);
-                if (is_kv_output) {
-                    kv_outputs.emplace_back(i, ggml_tensor);
-                    kv_buffer_bytes += ggml_nbytes(ggml_tensor);
-                }
-                const bool bind_kv = is_kv_output && kv_output_mode == prefill_kv_output_mode::current &&
-                                     (configured_bound_kv_count < 0 ||
-                                      kv_outputs.size() <= static_cast<size_t>(configured_bound_kv_count));
-                if (!is_kv_output || bind_kv) {
-                    auto output_tensor = create_ov_output_tensor(ggml_decoder, infer_request, i, ggml_tensor);
-                    infer_request->set_output_tensor(i, output_tensor);
-                    bound_output_count++;
-                    if (is_kv_output) {
-                        bound_kv_bytes += output_tensor.get_byte_size();
-                    }
-                }
+                auto output_tensor = create_ov_output_tensor(ggml_decoder, infer_request, i, ggml_tensor);
+                infer_request->set_output_tensor(i, output_tensor);
             }
-            GGML_ASSERT(configured_bound_kv_count < 0 ||
-                        static_cast<size_t>(configured_bound_kv_count) <= kv_outputs.size());
 
-            const auto bind_end = ggml_time_us();
             ov_raw_infer_start = ggml_time_us();
             infer_request->infer();
-            const auto chunk_infer_end = ggml_time_us();
-            const auto chunk_infer_us = chunk_infer_end - ov_raw_infer_start;
-            ov_raw_infer_total += chunk_infer_us;
-            int64_t kv_copy_us = 0;
-            const auto copy_start = ggml_time_us();
-            for (const auto & [output_index, ggml_tensor] : kv_outputs) {
-                const auto output_tensor = infer_request->get_output_tensor(output_index);
-                GGML_ASSERT(output_tensor.get_byte_size() <= ggml_nbytes(ggml_tensor));
-                kv_valid_bytes += output_tensor.get_byte_size();
-                if (kv_output_mode == prefill_kv_output_mode::explicit_copy) {
-                    std::memcpy(ggml_tensor->data, output_tensor.data(), output_tensor.get_byte_size());
-                }
-            }
-            if (kv_output_mode == prefill_kv_output_mode::explicit_copy) {
-                kv_copy_us = ggml_time_us() - copy_start;
-            }
-            const auto chunk_total_end = ggml_time_us();
-
-            size_t kv_checksum = 0;
-            const auto checksum_start = ggml_time_us();
-            if (!cache_hit && kv_output_mode != prefill_kv_output_mode::plugin_owned) {
-                for (const auto & [output_index, ggml_tensor] : kv_outputs) {
-                    const auto output_tensor = infer_request->get_output_tensor(output_index);
-                    const void * data = kv_output_mode == prefill_kv_output_mode::explicit_copy ?
-                                            ggml_tensor->data : output_tensor.data();
-                    kv_checksum = kv_checksum * 131 + checksum(data, output_tensor.get_byte_size());
-                }
-            }
-            const auto kv_checksum_us = ggml_time_us() - checksum_start;
-            const auto chunk_token_count = std::min<int64_t>(prefill_chunk_size,
-                                                              inp_len - chunk_index * prefill_chunk_size);
-            dump_timing_csv(true, cache_hit, chunk_index, chunk_token_count, ov_input_names_local.size(),
-                            ov_output_names_local.size(), bind_end - bind_start, chunk_infer_us,
-                            chunk_total_end - bind_start, get_prefill_kv_output_mode_name(kv_output_mode),
-                            bound_output_count, kv_outputs.size(), kv_valid_bytes, kv_buffer_bytes, bound_kv_bytes,
-                            kv_copy_us, kv_checksum_us, kv_checksum);
-            dump_profiling_csv(*infer_request);
-            dump_output_sample_csv(*infer_request, ov_output_names_local, "prefill");
+            ov_raw_infer_total += ggml_time_us() - ov_raw_infer_start;
 
             if (ggml_openvino_getenv_int("GGML_OPENVINO_DEBUG_OUTPUT")) {
                 for (size_t i = 0; i < ov_output_names_local.size(); i++) {
@@ -1032,8 +823,6 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
 
         ov_raw_infer_start = ggml_time_us();
         infer_request->infer();
-        dump_profiling_csv(*infer_request);
-        dump_output_sample_csv(*infer_request, ov_output_names_local, "decode");
         infer_end_time = ggml_time_us();
         ov_raw_infer_total = infer_end_time - ov_raw_infer_start;
 

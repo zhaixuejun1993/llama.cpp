@@ -725,7 +725,6 @@ Boolean flags follow a uniform convention: set to a **positive integer** (e.g. `
 | `GGML_OPENVINO_DUMP_IR`           | Boolean   | `0`        | Serialize OpenVINO IR files with timestamps.                                                                |
 | `GGML_OPENVINO_DEBUG_INPUT`       | Boolean   | `0`        | Enable input debugging and print input tensor info.                                                         |
 | `GGML_OPENVINO_DEBUG_OUTPUT`      | Boolean   | `0`        | Enable output debugging and print output tensor info.                                                       |
-| `GGML_OPENVINO_OUTPUT_SAMPLE_CSV` | String    | `not set`  | Diagnostic CSV path. After each infer, save up to 33 uniformly spaced values from every f16/f32 output. This reads output tensors after inference and must remain unset for performance measurements. |
 | `GGML_OPENVINO_PRINT_CGRAPH_TENSOR_ADDRESS` | Boolean | `0` | Print tensor address map once.                                                                           |
 
 > [!NOTE]

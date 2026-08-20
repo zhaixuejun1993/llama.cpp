@@ -4326,13 +4326,6 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ).set_examples({LLAMA_EXAMPLE_DEBUG}));
     add_opt(common_arg(
-        {"--token-ids-file"}, "PATH",
-        "use fixed prompt token IDs from a whitespace/comma-separated file",
-        [](common_params & params, const std::string & value) {
-            params.token_ids_file = value;
-        }
-    ).set_examples({LLAMA_EXAMPLE_DEBUG}));
-    add_opt(common_arg(
         {"--tensor-filter"}, "REGEX",
         "filter tensor names for debug output (regex pattern, can be specified multiple times)",
         [](common_params & params, const std::string & value) {
