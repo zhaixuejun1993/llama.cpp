@@ -35,6 +35,7 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_NPUW_FUNCALL_FOR_ALL",
         "GGML_OPENVINO_NPUW_UNFOLD_IREQS",
         "GGML_OPENVINO_COMPILATION_NUM_THREADS",
+        "GGML_OPENVINO_NPU_COMPILATION_MODE_PARAMS",
         "GGML_OPENVINO_NPU_CONFIG",
         // Integer values (use ggml_openvino_getenv_int)
         "GGML_OPENVINO_PREFILL_CHUNK_SIZE",
@@ -117,6 +118,11 @@ void ggml_openvino_device_config::init() {
         const char * num_threads = ggml_openvino_getenv_str("GGML_OPENVINO_COMPILATION_NUM_THREADS");
         if (num_threads && strlen(num_threads) > 0) {
             compile_config["COMPILATION_NUM_THREADS"] = num_threads;
+        }
+        const char * compilation_mode_params =
+            ggml_openvino_getenv_str("GGML_OPENVINO_NPU_COMPILATION_MODE_PARAMS");
+        if (compilation_mode_params && strlen(compilation_mode_params) > 0) {
+            compile_config["NPU_COMPILATION_MODE_PARAMS"] = compilation_mode_params;
         }
         // Comma-separated KEY=VALUE pairs appended last, so they override anything above.
         // Escape hatch for bisecting plugin options without a rebuild.
