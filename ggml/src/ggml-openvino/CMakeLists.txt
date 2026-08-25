@@ -1,7 +1,5 @@
 find_package(OpenVINO REQUIRED COMPONENTS Runtime Threading)
 find_package(OpenCL REQUIRED)
-list(APPEND CMAKE_PREFIX_PATH "/home/openvino-288v002/xuejun/easy_profiler_gui/cmake/easy_profiler")
-find_package(easy_profiler REQUIRED)
 
 file(GLOB_RECURSE GGML_HEADERS_OPENVINO "*.h" "*.hpp")
 file(GLOB_RECURSE GGML_SOURCES_OPENVINO "*.cpp")
@@ -11,7 +9,7 @@ ggml_add_backend_library(ggml-openvino
     ${GGML_HEADERS_OPENVINO}
 )
 
-target_link_libraries(ggml-openvino PRIVATE openvino::runtime openvino::threading OpenCL::OpenCL easy_profiler)
+target_link_libraries(ggml-openvino PRIVATE openvino::runtime openvino::threading OpenCL::OpenCL)
 
 if (GGML_OPENVINO)
     if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")

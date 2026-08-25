@@ -8,7 +8,6 @@
 #include "openvino/frontend.h"
 #include "openvino/input_model.h"
 
-#include <easy/profiler.h>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -568,7 +567,6 @@ enum ggml_status ov_graph_compute_dynamic(ggml_cgraph * cgraph, std::shared_ptr<
 }
 
 enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<ov_runtime_context> r_ctx) {
-    EASY_BLOCK("ov_graph_compute_static", profiler::colors::Blue);
     auto & core = ov_singleton_core();
 
     auto get_prefill_chunk_size = [] {

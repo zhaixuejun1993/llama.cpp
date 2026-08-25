@@ -19,8 +19,6 @@
 #include <vector>
 #include <unordered_set>
 
-#include <easy/profiler.h>
-
 #include "arg.h"
 #include "build-info.h"
 #include "common.h"
@@ -37,31 +35,6 @@
 #    endif
 #    include <windows.h>
 #endif
-
-static void llama_bench_easy_profiler_dump() {
-    const char * output_file = std::getenv("GGML_OPENVINO_EASY_PROFILER_FILE");
-    if (output_file == nullptr || output_file[0] == '\0') {
-        return;
-    }
-
-    const uint32_t blocks = profiler::dumpBlocksToFile(output_file);
-    fprintf(stderr, "llama-bench easy_profiler saved %u blocks to %s\n", blocks, output_file);
-}
-
-static void llama_bench_easy_profiler_start_once() {
-    static const bool enabled = [] {
-        const char * output_file = std::getenv("GGML_OPENVINO_EASY_PROFILER_FILE");
-        if (output_file == nullptr || output_file[0] == '\0') {
-            return false;
-        }
-
-        EASY_PROFILER_ENABLE;
-        std::atexit(llama_bench_easy_profiler_dump);
-        fprintf(stderr, "llama-bench easy_profiler capturing to %s\n", output_file);
-        return true;
-    }();
-    (void) enabled;
-}
 
 // utils
 static uint64_t get_time_ns() {
@@ -2227,9 +2200,6 @@ static std::unique_ptr<printer> create_printer(output_formats format) {
 int llama_bench(int argc, char ** argv);
 
 int llama_bench(int argc, char ** argv) {
-    llama_bench_easy_profiler_start_once();
-    EASY_FUNCTION(profiler::colors::Red);
-
     std::setlocale(LC_NUMERIC, "C");
     // try to set locale for unicode characters in markdown
     std::setlocale(LC_CTYPE, ".UTF-8");
@@ -2344,10 +2314,7 @@ int llama_bench(int argc, char ** argv) {
                 llama_model_free(lmodel);
             }
 
-            {
-                EASY_BLOCK("load model");
-                lmodel = llama_model_load_from_file(inst.model.c_str(), mparams);
-            }
+            lmodel = llama_model_load_from_file(inst.model.c_str(), mparams);
             if (lmodel == NULL) {
                 fprintf(stderr, "%s: error: failed to load model '%s'\n", __func__, inst.model.c_str());
                 return 1;
@@ -2355,11 +2322,7 @@ int llama_bench(int argc, char ** argv) {
             prev_inst = &inst;
         }
 
-        llama_context * ctx = nullptr;
-        {
-            EASY_BLOCK("init context");
-            ctx = llama_init_from_model(lmodel, cparams);
-        }
+        llama_context * ctx = llama_init_from_model(lmodel, cparams);
         if (ctx == NULL) {
             fprintf(stderr, "%s: error: failed to create context with model '%s'\n", __func__, inst.model.c_str());
             llama_model_free(lmodel);
@@ -2403,11 +2366,7 @@ int llama_bench(int argc, char ** argv) {
                     fprintf(stderr, "llama-bench: benchmark %d/%zu: warmup prompt run\n", params_idx, params_count);
                 }
                 //test_prompt(ctx, std::min(t.n_batch, std::min(t.n_prompt, 32)), 0, t.n_batch, t.n_threads);
-                bool res;
-                {
-                    EASY_BLOCK("warmup prompt");
-                    res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads);
-                }
+                bool res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads);
                 if (!res) {
                     fprintf(stderr, "%s: error: failed to run prompt warmup\n", __func__);
                     llama_free(ctx);
@@ -2419,11 +2378,7 @@ int llama_bench(int argc, char ** argv) {
                 if (params.progress) {
                     fprintf(stderr, "llama-bench: benchmark %d/%zu: warmup generation run\n", params_idx, params_count);
                 }
-                bool res;
-                {
-                    EASY_BLOCK("warmup gen");
-                    res = test_gen(ctx, 1, t.n_threads);
-                }
+                bool res = test_gen(ctx, 1, t.n_threads);
                 if (!res) {
                     fprintf(stderr, "%s: error: failed to run gen warmup\n", __func__);
                     llama_free(ctx);
@@ -2453,11 +2408,7 @@ int llama_bench(int argc, char ** argv) {
                         fprintf(stderr, "llama-bench: benchmark %d/%zu: depth run %d/%d\n", params_idx, params_count,
                                 i + 1, params.reps);
                     }
-                    bool res;
-                    {
-                        EASY_BLOCK("depth run");
-                        res = test_prompt(ctx, t.n_depth, t.n_batch, t.n_threads);
-                    }
+                    bool res = test_prompt(ctx, t.n_depth, t.n_batch, t.n_threads);
                     if (!res) {
                         fprintf(stderr, "%s: error: failed to run depth\n", __func__);
                         llama_free(ctx);
@@ -2484,11 +2435,7 @@ int llama_bench(int argc, char ** argv) {
                     fprintf(stderr, "llama-bench: benchmark %d/%zu: prompt run %d/%d\n", params_idx, params_count,
                             i + 1, params.reps);
                 }
-                bool res;
-                {
-                    EASY_BLOCK("prompt run");
-                    res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads);
-                }
+                bool res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads);
                 if (!res) {
                     fprintf(stderr, "%s: error: failed to run prompt\n", __func__);
                     llama_free(ctx);
@@ -2501,11 +2448,7 @@ int llama_bench(int argc, char ** argv) {
                     fprintf(stderr, "llama-bench: benchmark %d/%zu: generation run %d/%d\n", params_idx, params_count,
                             i + 1, params.reps);
                 }
-                bool res;
-                {
-                    EASY_BLOCK("generation run");
-                    res = test_gen(ctx, t.n_gen, t.n_threads);
-                }
+                bool res = test_gen(ctx, t.n_gen, t.n_threads);
                 if (!res) {
                     fprintf(stderr, "%s: error: failed to run gen\n", __func__);
                     llama_free(ctx);
