@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <fstream>
 #include <iterator>
 #include <map>
 #include <numeric>
@@ -386,6 +387,7 @@ struct cmd_params {
     bool                             verbose;
     bool                             progress;
     bool                             no_warmup;
+    std::string                      token_ids_file;
     output_formats                   output_format;
     output_formats                   output_format_stderr;
 };
@@ -430,6 +432,7 @@ static const cmd_params cmd_params_defaults = {
     /* verbose              */ false,
     /* progress             */ false,
     /* no_warmup            */ false,
+    /* token_ids_file       */ "",
     /* output_format        */ MARKDOWN,
     /* output_format_stderr */ NONE,
 };
@@ -449,6 +452,7 @@ static void print_usage(int /* argc */, char ** argv) {
     printf("  -v, --verbose                               verbose output\n");
     printf("  --progress                                  print test progress indicators\n");
     printf("  --no-warmup                                 skip warmup runs before benchmarking\n");
+    printf("  --token-ids-file <filename>                 use fixed prompt token IDs from a whitespace/comma-separated file\n");
     printf("  -fitt, --fit-target <MiB>                   fit model to device memory with this margin per device in MiB (default: off)\n");
     printf("  -fitc, --fit-ctx <n>                        minimum ctx size for --fit-target (default: 4096)\n");
     if (llama_supports_rpc()) {
@@ -547,6 +551,7 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
     params.delay                = cmd_params_defaults.delay;
     params.progress             = cmd_params_defaults.progress;
     params.no_warmup            = cmd_params_defaults.no_warmup;
+    params.token_ids_file       = cmd_params_defaults.token_ids_file;
     params.offline              = cmd_params_defaults.offline;
 
     if (const char * env = getenv("HF_TOKEN")) {
@@ -1078,6 +1083,12 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
                 params.progress = true;
             } else if (arg == "--no-warmup") {
                 params.no_warmup = true;
+            } else if (arg == "--token-ids-file") {
+                if (++i >= argc) {
+                    invalid_param = true;
+                    break;
+                }
+                params.token_ids_file = argv[i];
             } else if (arg == "-fitt" || arg == "--fit-target") {
                 if (++i >= argc) {
                     invalid_param = true;
@@ -2149,7 +2160,35 @@ struct ctx_state {
     std::vector<uint8_t> buf; // the llama_context state buffer
 };
 
-static bool test_prompt(llama_context * ctx, int n_prompt, int n_batch, int n_threads) {
+static std::vector<llama_token> load_token_ids(const std::string & path) {
+    std::ifstream input(path);
+    if (!input) {
+        throw std::runtime_error("failed to open token IDs file: " + path);
+    }
+
+    std::string contents((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    std::replace(contents.begin(), contents.end(), ',', ' ');
+
+    std::istringstream stream(contents);
+    std::vector<llama_token> token_ids;
+    int64_t token_id;
+    while (stream >> token_id) {
+        if (token_id < std::numeric_limits<llama_token>::min() || token_id > std::numeric_limits<llama_token>::max()) {
+            throw std::runtime_error("token ID is out of range in file: " + path);
+        }
+        token_ids.push_back(static_cast<llama_token>(token_id));
+    }
+    if (!stream.eof()) {
+        throw std::runtime_error("invalid token ID in file: " + path);
+    }
+    if (token_ids.empty()) {
+        throw std::runtime_error("token IDs file is empty: " + path);
+    }
+    return token_ids;
+}
+
+static bool test_prompt(llama_context * ctx, int n_prompt, int n_batch, int n_threads,
+                        const std::vector<llama_token> * fixed_tokens = nullptr) {
     llama_set_n_threads(ctx, n_threads, n_threads);
 
     const llama_model * model   = llama_get_model(ctx);
@@ -2162,9 +2201,18 @@ static bool test_prompt(llama_context * ctx, int n_prompt, int n_batch, int n_th
 
     while (n_processed < n_prompt) {
         int n_tokens = std::min(n_prompt - n_processed, n_batch);
-        tokens[0]    = n_processed == 0 && llama_vocab_get_add_bos(vocab) ? llama_vocab_bos(vocab) : std::rand() % n_vocab;
-        for (int i = 1; i < n_tokens; i++) {
-            tokens[i] = std::rand() % n_vocab;
+        if (fixed_tokens) {
+            if (fixed_tokens->size() < static_cast<size_t>(n_prompt)) {
+                fprintf(stderr, "%s: token IDs file has %zu tokens, expected at least %d\n",
+                        __func__, fixed_tokens->size(), n_prompt);
+                return false;
+            }
+            std::copy_n(fixed_tokens->begin() + n_processed, n_tokens, tokens.begin());
+        } else {
+            tokens[0] = n_processed == 0 && llama_vocab_get_add_bos(vocab) ? llama_vocab_bos(vocab) : std::rand() % n_vocab;
+            for (int i = 1; i < n_tokens; i++) {
+                tokens[i] = std::rand() % n_vocab;
+            }
         }
         int res = llama_decode(ctx, llama_batch_get_one(tokens.data(), n_tokens));
         if (res != 0) {
@@ -2275,6 +2323,17 @@ int llama_bench(int argc, char ** argv) {
     // initialize printer
     std::unique_ptr<printer> p     = create_printer(params.output_format);
     std::unique_ptr<printer> p_err = create_printer(params.output_format_stderr);
+
+    std::vector<llama_token> fixed_tokens;
+    if (!params.token_ids_file.empty()) {
+        try {
+            fixed_tokens = load_token_ids(params.token_ids_file);
+        } catch (const std::exception & e) {
+            fprintf(stderr, "error: %s\n", e.what());
+            return 1;
+        }
+    }
+    const std::vector<llama_token> * prompt_tokens = fixed_tokens.empty() ? nullptr : &fixed_tokens;
 
     if (p) {
         p->fout = stdout;
@@ -2406,7 +2465,7 @@ int llama_bench(int argc, char ** argv) {
                 bool res;
                 {
                     EASY_BLOCK("warmup prompt");
-                    res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads);
+                    res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads, prompt_tokens);
                 }
                 if (!res) {
                     fprintf(stderr, "%s: error: failed to run prompt warmup\n", __func__);
@@ -2456,7 +2515,7 @@ int llama_bench(int argc, char ** argv) {
                     bool res;
                     {
                         EASY_BLOCK("depth run");
-                        res = test_prompt(ctx, t.n_depth, t.n_batch, t.n_threads);
+                        res = test_prompt(ctx, t.n_depth, t.n_batch, t.n_threads, prompt_tokens);
                     }
                     if (!res) {
                         fprintf(stderr, "%s: error: failed to run depth\n", __func__);
@@ -2487,7 +2546,7 @@ int llama_bench(int argc, char ** argv) {
                 bool res;
                 {
                     EASY_BLOCK("prompt run");
-                    res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads);
+                    res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads, prompt_tokens);
                 }
                 if (!res) {
                     fprintf(stderr, "%s: error: failed to run prompt\n", __func__);

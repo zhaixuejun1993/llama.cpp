@@ -650,10 +650,20 @@ ov::Output<ov::Node> make_int4_weights(ov::Tensor & weight,
     ov::Output<ov::Node> result;
     if (is_signed) {
         // Signed path: q * s (no zero point subtraction needed)
-        auto weights_node = std::make_shared<ov::op::v0::Constant>(ov::element::i4, packed_shape,
+        const bool use_group128_2d_view = ggml_openvino_is_npu() && group_size == 128 &&
+                                          orig_weight_shape.size() == 2 &&
+                                          ggml_openvino_getenv_int("GGML_OPENVINO_NPU_GROUP128_2D_VIEW") != 0;
+        const ov::Shape constant_shape = use_group128_2d_view ? orig_weight_shape : packed_shape;
+        auto weights_node = std::make_shared<ov::op::v0::Constant>(ov::element::i4, constant_shape,
                                                                    static_cast<uint8_t *>(weight.data()), nullptr);
         weights_node->get_rt_info()["__gguf_tensor_holder"] = weight;
-        auto weights_f16 = std::make_shared<ov::op::v0::Convert>(weights_node, ov::element::f16);
+        ov::Output<ov::Node> grouped_weights = weights_node;
+        if (use_group128_2d_view) {
+            auto grouped_shape = std::make_shared<ov::op::v0::Constant>(
+                ov::element::i64, ov::Shape{packed_shape.size()}, packed_shape);
+            grouped_weights = std::make_shared<ov::op::v1::Reshape>(weights_node, grouped_shape, false);
+        }
+        auto weights_f16 = std::make_shared<ov::op::v0::Convert>(grouped_weights, ov::element::f16);
         auto mul = std::make_shared<ov::op::v1::Multiply>(weights_f16, scales_f16, ov::op::AutoBroadcastType::NUMPY);
         result = mul;
     } else {

@@ -38,6 +38,10 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_NPU_COMPILATION_MODE_PARAMS",
         "GGML_OPENVINO_NPU_CONFIG",
         "GGML_OPENVINO_NPU_REQUANT_POLICY",
+        "GGML_OPENVINO_PROFILE_CSV",
+        "GGML_OPENVINO_TIMING_CSV",
+        "GGML_OPENVINO_OUTPUT_SAMPLE_CSV",
+        "GGML_OPENVINO_PREFILL_KV_OUTPUT_MODE",
         // Integer values (use ggml_openvino_getenv_int)
         "GGML_OPENVINO_PREFILL_CHUNK_SIZE",
         // Boolean toggles (treated as int flags via ggml_openvino_getenv_int)
@@ -59,6 +63,7 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_TOKEN_EMBD_I8",
         "GGML_OPENVINO_TOKEN_EMBD_I4",
         "GGML_OPENVINO_NPU_KEEP_Q4_0",
+        "GGML_OPENVINO_NPU_GROUP128_2D_VIEW",
         "GGML_OPENVINO_COMPILE_FROM_IR",
         "GGML_OPENVINO_COMPILED_MODEL_CACHE_DIR",
     };
@@ -124,6 +129,8 @@ void ggml_openvino_device_config::init() {
             ggml_openvino_getenv_str("GGML_OPENVINO_NPU_COMPILATION_MODE_PARAMS");
         if (compilation_mode_params && strlen(compilation_mode_params) > 0) {
             compile_config["NPU_COMPILATION_MODE_PARAMS"] = compilation_mode_params;
+            // print log
+            GGML_LOG_INFO("GGML OpenVINO: NPU compilation mode params %s\n", compilation_mode_params);
         }
         // Comma-separated KEY=VALUE pairs appended last, so they override anything above.
         // Escape hatch for bisecting plugin options without a rebuild.
@@ -144,6 +151,9 @@ void ggml_openvino_device_config::init() {
                 }
                 pos = comma + 1;
             }
+        }
+        if (ggml_openvino_getenv_int("GGML_OPENVINO_PROFILING")) {
+            compile_config.insert(ov::enable_profiling(true));
         }
     } else if (cache_dir && strlen(cache_dir) > 0) {
         compile_config.insert(ov::cache_dir(cache_dir));
