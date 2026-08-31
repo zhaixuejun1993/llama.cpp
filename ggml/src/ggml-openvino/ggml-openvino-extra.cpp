@@ -60,6 +60,7 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_TOKEN_EMBD_I4",
         "GGML_OPENVINO_NPU_KEEP_Q4_0",
         "GGML_OPENVINO_NPU_FAST_MASK",
+        "GGML_OPENVINO_NPU_L0_HOST_TENSORS",
         "GGML_OPENVINO_COMPILE_FROM_IR",
         "GGML_OPENVINO_COMPILED_MODEL_CACHE_DIR",
     };
