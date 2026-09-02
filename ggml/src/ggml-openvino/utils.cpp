@@ -16,7 +16,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <unistd.h>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -37,6 +36,12 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#ifdef _WIN32
+#    include <process.h>
+#else
+#    include <unistd.h>
+#endif
 
 // Suppress  deprecation warning for ov::Tensor::data()
 #pragma GCC diagnostic push
@@ -742,7 +747,11 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
         std::filesystem::path ir_scratch;
         if (ggml_openvino_getenv_int("GGML_OPENVINO_COMPILE_FROM_IR")) {
             ir_scratch = std::filesystem::temp_directory_path() /
+#ifdef _WIN32
+                         ("ggml_ov_ir_" + std::to_string(static_cast<long long>(_getpid())));
+#else
                          ("ggml_ov_ir_" + std::to_string(static_cast<long long>(getpid())));
+#endif
             std::filesystem::create_directories(ir_scratch);
             const auto prefill_xml = (ir_scratch / "prefill.xml").string();
             const auto decode_xml = (ir_scratch / "decode.xml").string();

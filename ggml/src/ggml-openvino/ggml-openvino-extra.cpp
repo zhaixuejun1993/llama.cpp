@@ -99,11 +99,12 @@ void ggml_openvino_device_config::init() {
             compile_config.insert(ov::cache_mode(ov::CacheMode::OPTIMIZE_SIZE));
         }
         // PLUGIN | DRIVER | PREFER_PLUGIN. The in-plugin compiler and the driver compiler
-        // can differ substantially in generated code quality for the same op.
+        // can differ substantially in generated code quality for the same op. On the Intel
+        // NPU the driver compiler emits markedly faster prefill kernels (~1940 vs ~1540 t/s
+        // pp1024 on phi-4-mini), matching OpenVINO GenAI, so default to DRIVER here.
         const char * compiler_type = ggml_openvino_getenv_str("GGML_OPENVINO_NPU_COMPILER_TYPE");
-        if (compiler_type && strlen(compiler_type) > 0) {
-            compile_config["NPU_COMPILER_TYPE"] = compiler_type;
-        }
+        compile_config["NPU_COMPILER_TYPE"] =
+            (compiler_type && strlen(compiler_type) > 0) ? std::string(compiler_type) : std::string("DRIVER");
         // NPUW_FUNCALL_FOR_ALL=YES hangs the NPU (device lost via TDR) for context
         // lengths >= ~786 on the 2026.3 in-plugin compiler. Allow turning it off.
         const char * funcall_for_all = ggml_openvino_getenv_str("GGML_OPENVINO_NPUW_FUNCALL_FOR_ALL");
