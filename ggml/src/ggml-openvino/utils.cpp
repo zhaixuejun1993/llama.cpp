@@ -771,7 +771,15 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
         ov::CompiledModel compiled_model_prefill;
         ov::CompiledModel compiled_model_decode;
         compiled_model_prefill = core.compile_model(model_prefill, device, config);
-        compiled_model_decode = core.compile_model(model_decode, device, config);
+        // Decode is a stream of single-token infers where the folded NPUW function-call
+        // dispatch dominates; unfolding the funcalls into separate infer requests removes
+        // that overhead (~+20% tg, matching GenAI). Prefill keeps the folded form, which is
+        // faster for the large batched prompt matmuls, so only the decode model is unfolded.
+        ov::AnyMap decode_config = config;
+        if (device == "NPU" && decode_config.find("NPUW_UNFOLD_IREQS") == decode_config.end()) {
+            decode_config["NPUW_UNFOLD_IREQS"] = "YES";
+        }
+        compiled_model_decode = core.compile_model(model_decode, device, decode_config);
 
         auto infer_request_prefill = std::make_shared<ov::InferRequest>(compiled_model_prefill.create_infer_request());
         auto infer_request_decode = std::make_shared<ov::InferRequest>(compiled_model_decode.create_infer_request());
