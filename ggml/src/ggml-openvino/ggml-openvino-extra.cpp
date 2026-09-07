@@ -35,7 +35,9 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_NPUW_FUNCALL_FOR_ALL",
         "GGML_OPENVINO_NPUW_UNFOLD_IREQS",
         "GGML_OPENVINO_COMPILATION_NUM_THREADS",
+        "GGML_OPENVINO_NPU_COMPILATION_MODE_PARAMS",
         "GGML_OPENVINO_NPU_CONFIG",
+        "GGML_OPENVINO_NPU_REQUANT_POLICY",
         // Integer values (use ggml_openvino_getenv_int)
         "GGML_OPENVINO_PREFILL_CHUNK_SIZE",
         // Boolean toggles (treated as int flags via ggml_openvino_getenv_int)
@@ -57,6 +59,9 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_TOKEN_EMBD_I8",
         "GGML_OPENVINO_TOKEN_EMBD_I4",
         "GGML_OPENVINO_NPU_KEEP_Q4_0",
+        "GGML_OPENVINO_NPU_FAST_MASK",
+        "GGML_OPENVINO_NPU_L0_HOST_TENSORS",
+        "GGML_OPENVINO_NPU_KV_SLICE",
         "GGML_OPENVINO_COMPILE_FROM_IR",
         "GGML_OPENVINO_COMPILED_MODEL_CACHE_DIR",
     };
@@ -94,30 +99,31 @@ void ggml_openvino_device_config::init() {
             compile_config.insert(ov::cache_mode(ov::CacheMode::OPTIMIZE_SIZE));
         }
         // PLUGIN | DRIVER | PREFER_PLUGIN. The in-plugin compiler and the driver compiler
-        // can differ substantially in generated code quality for the same op.
+        // can differ substantially in generated code quality for the same op. On the Intel
+        // NPU the driver compiler emits markedly faster prefill kernels (~1940 vs ~1540 t/s
+        // pp1024 on phi-4-mini), matching OpenVINO GenAI, so default to DRIVER here.
         const char * compiler_type = ggml_openvino_getenv_str("GGML_OPENVINO_NPU_COMPILER_TYPE");
-        if (compiler_type && strlen(compiler_type) > 0) {
-            compile_config["NPU_COMPILER_TYPE"] = compiler_type;
-        }
+        compile_config["NPU_COMPILER_TYPE"] =
+            (compiler_type && strlen(compiler_type) > 0) ? std::string(compiler_type) : std::string("DRIVER");
+        // Copy an optional string env var into the compile config only when it is set and non-empty.
+        auto set_compile_option_from_env = [&](const char * env_var, const char * config_key) {
+            const char * value = ggml_openvino_getenv_str(env_var);
+            if (value && strlen(value) > 0) {
+                compile_config[config_key] = value;
+            }
+        };
         // NPUW_FUNCALL_FOR_ALL=YES hangs the NPU (device lost via TDR) for context
         // lengths >= ~786 on the 2026.3 in-plugin compiler. Allow turning it off.
-        const char * funcall_for_all = ggml_openvino_getenv_str("GGML_OPENVINO_NPUW_FUNCALL_FOR_ALL");
-        if (funcall_for_all && strlen(funcall_for_all) > 0) {
-            compile_config["NPUW_FUNCALL_FOR_ALL"] = funcall_for_all;
-        }
+        set_compile_option_from_env("GGML_OPENVINO_NPUW_FUNCALL_FOR_ALL", "NPUW_FUNCALL_FOR_ALL");
         // Unfolds function calls into separate infer requests, trading memory for the
         // per-call dispatch overhead that repeated funcalls otherwise pay.
-        const char * unfold_ireqs = ggml_openvino_getenv_str("GGML_OPENVINO_NPUW_UNFOLD_IREQS");
-        if (unfold_ireqs && strlen(unfold_ireqs) > 0) {
-            compile_config["NPUW_UNFOLD_IREQS"] = unfold_ireqs;
-        }
+        set_compile_option_from_env("GGML_OPENVINO_NPUW_UNFOLD_IREQS", "NPUW_UNFOLD_IREQS");
         // The compiler runs one llvm worker per core by default; each carries its own
         // working set, so large graphs can exhaust host RAM. Capping the workers trades
         // compile time for peak memory.
-        const char * num_threads = ggml_openvino_getenv_str("GGML_OPENVINO_COMPILATION_NUM_THREADS");
-        if (num_threads && strlen(num_threads) > 0) {
-            compile_config["COMPILATION_NUM_THREADS"] = num_threads;
-        }
+        set_compile_option_from_env("GGML_OPENVINO_COMPILATION_NUM_THREADS", "COMPILATION_NUM_THREADS");
+        // NPU compiler mode parameters, e.g. "optimization-level=3".
+        set_compile_option_from_env("GGML_OPENVINO_NPU_COMPILATION_MODE_PARAMS", "NPU_COMPILATION_MODE_PARAMS");
         // Comma-separated KEY=VALUE pairs appended last, so they override anything above.
         // Escape hatch for bisecting plugin options without a rebuild.
         const char * extra_config = ggml_openvino_getenv_str("GGML_OPENVINO_NPU_CONFIG");
@@ -248,6 +254,18 @@ bool ggml_openvino_is_npu() {
     return ggml_openvino_get_device_config().is_npu;
 }
 
+bool ggml_openvino_npu_kv_slice_enabled() {
+    return ggml_openvino_getenv_int("GGML_OPENVINO_NPU_KV_SLICE") != 0;
+}
+
+bool ggml_openvino_npu_fast_mask_enabled() {
+    return ggml_openvino_getenv_int("GGML_OPENVINO_NPU_FAST_MASK") != 0;
+}
+
+bool ggml_openvino_npu_l0_host_tensors_enabled() {
+    return ggml_openvino_getenv_int("GGML_OPENVINO_NPU_L0_HOST_TENSORS") != 0;
+}
+
 // Get the remote context for the current device (returns empty optional for CPU)
 std::optional<ov::RemoteContext> ggml_openvino_get_remote_context() {
     return ggml_openvino_get_device_config().remote_context;
@@ -291,6 +309,17 @@ clEnqueueMemcpyINTEL_fn ggml_openvino_get_clEnqueueMemcpyINTEL() {
     return fn;
 }
 
+ExtraQuantType ggml_openvino_get_npu_requant_type() {
+    const std::string policy = ggml_openvino_getenv_str("GGML_OPENVINO_NPU_REQUANT_POLICY", "group-128");
+    if (policy == "group-128") {
+        return ExtraQuantType::Q4_0_128;
+    }
+    if (policy == "channel-wise") {
+        return ExtraQuantType::Q4_0_C;
+    }
+    GGML_ABORT("Unknown GGML_OPENVINO_NPU_REQUANT_POLICY: %s", policy.c_str());
+}
+
 // Get requantization type for a tensor type (returns nullopt if no requant needed)
 std::optional<ExtraQuantType> ggml_openvino_get_requant_type(const ggml_tensor * tensor, bool no_requant) {
     if (no_requant) {
@@ -322,7 +351,7 @@ std::optional<ExtraQuantType> ggml_openvino_get_requant_type(const ggml_tensor *
         if (tensor->type == GGML_TYPE_Q4_0 && ggml_openvino_getenv_int("GGML_OPENVINO_NPU_KEEP_Q4_0")) {
             return std::nullopt;
         }
-        return ExtraQuantType::Q4_0_128;
+        return ggml_openvino_get_npu_requant_type();
     }
     switch (tensor->type) {
     case GGML_TYPE_Q6_K:

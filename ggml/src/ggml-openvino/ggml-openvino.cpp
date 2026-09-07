@@ -64,6 +64,8 @@ struct ggml_backend_openvino_buffer_context {
     size_t size;
     bool is_remote;
 
+    bool data_owned_by_ov = false;
+
     // Wrapping of the buffer
     std::shared_ptr<ov::Tensor> ov_buffer;
 
@@ -98,10 +100,27 @@ struct ggml_backend_openvino_buffer_context {
             data = usm_tensor.get();
             ov_buffer = std::make_shared<ov::intel_gpu::ocl::USMTensor>(std::move(usm_tensor));
         } else {
-            data = ggml_aligned_malloc(size);
-            GGML_ASSERT(data);
-            memset(data, 0, size);
-            ov_buffer = std::make_shared<ov::Tensor>(ov::element::u8, ov::Shape{size}, data);
+            // use importable Level Zero host memory when available
+            if (device_name == "NPU" && ggml_openvino_npu_l0_host_tensors_enabled()) {
+                try {
+                    auto npu_context = ov_singleton_core().get_default_context("NPU");
+                    auto host_tensor = npu_context.create_host_tensor(ov::element::u8, ov::Shape{size});
+                    data = host_tensor.data();
+                    memset(data, 0, size);
+                    ov_buffer = std::make_shared<ov::Tensor>(std::move(host_tensor));
+                    data_owned_by_ov = true;
+                } catch (const std::exception & e) {
+                    GGML_LOG_WARN("%s: L0 host tensor allocation of %zu bytes failed (%s); using aligned malloc\n",
+                                  __func__, size, e.what());
+                    data = nullptr;
+                }
+            }
+            if (data == nullptr) {
+                data = ggml_aligned_malloc(size);
+                GGML_ASSERT(data);
+                memset(data, 0, size);
+                ov_buffer = std::make_shared<ov::Tensor>(ov::element::u8, ov::Shape{size}, data);
+            }
         }
 
         if (data == nullptr) {
@@ -124,7 +143,7 @@ struct ggml_backend_openvino_buffer_context {
             delete pair.second;
         }
         tensor_extras.clear();
-        if (!is_remote && data != nullptr) {
+        if (!is_remote && !data_owned_by_ov && data != nullptr) {
             ggml_aligned_free(data, size);
         }
     }
