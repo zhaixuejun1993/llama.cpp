@@ -118,16 +118,6 @@ bool is_conv_states_all_tensor(const ggml_tensor * tensor) {
     return tensor != nullptr && strncmp(tensor->name, "conv_states_all", strlen("conv_states_all")) == 0;
 }
 
-// CPY writing the tail of conv_input (the concat of the previous conv state and the new tokens)
-// back into a slot block of the recurrent state cache. Detected structurally because the rollback
-// variant (cparams.n_rs_seq > 0) emits one such CPY per snapshot slot without naming them.
-bool is_conv_state_writeback(const ggml_tensor * node) {
-    return node->op == GGML_OP_CPY && node->view_src != nullptr && GgmlOvDecoder::is_kvcache(node->view_src, nullptr) &&
-           node->src[0] != nullptr && node->src[0]->op == GGML_OP_VIEW && node->src[0]->src[0] != nullptr &&
-           node->src[0]->src[0]->op == GGML_OP_CONCAT && node->src[1] != nullptr && node->src[1]->op == GGML_OP_VIEW &&
-           node->src[1]->view_src == node->view_src;
-}
-
 // MoE expert aggregation (build_moe_ffn in llama-graph.cpp): each expert plane is
 // `ggml_view_2d(experts, n_embd, n_tokens, experts->nb[2], i*experts->nb[1])` and the planes
 // are summed with a chain of ADDs: moe_out = ((view_0 + view_1) + view_2) + ... + view_{n-1}.
@@ -453,7 +443,7 @@ int GgmlOvDecoder::compute_op_case(const ggml_tensor * node) const {
         if (node->src[0]->op == GGML_OP_VIEW) {
             if (node->src[0]->src[0]->op == GGML_OP_GATED_DELTA_NET) {
                 op_case = 1;
-            } else if (is_conv_state_writeback(node)) {
+            } else if (GgmlOvDecoder::is_conv_state_writeback(node)) {
                 op_case = 2;
                 break;
             } else if (is_conv_states_all_tensor(node->view_src) && node->src[1] != nullptr &&
@@ -849,11 +839,11 @@ std::pair<ModelParams, ComputeParams> GgmlOvDecoder::compute_llm_params(ggml_cgr
             // mixed SWA/non-SWA layers with different n_dims or freq_base), we cannot
             // share a single precomputed rope_sin/rope_cos. Track divergence so the
             // translator falls back to per-op make_sin_cos in that case.
-            static_assert(sizeof(model_params.rope_params) == sizeof(int32_t) * 15, "rope_params size");
+            static_assert(sizeof(model_params.rope_params) == sizeof(int32_t) * 16, "rope_params size");
             if (!rope_seen) {
-                memcpy(model_params.rope_params, node->op_params, sizeof(int32_t) * 15);
+                memcpy(model_params.rope_params, node->op_params, sizeof(int32_t) * 16);
                 rope_seen = true;
-            } else if (memcmp(model_params.rope_params, node->op_params, sizeof(int32_t) * 15) != 0) {
+            } else if (memcmp(model_params.rope_params, node->op_params, sizeof(int32_t) * 16) != 0) {
                 model_params.mixed_rope_params = true;
             }
         }
