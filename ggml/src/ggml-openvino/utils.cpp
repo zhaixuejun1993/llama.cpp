@@ -831,9 +831,10 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
         const bool dump_ir = ggml_openvino_getenv_int("GGML_OPENVINO_DUMP_IR");
         const auto dump_ir_timestamp = static_cast<long long>(ggml_time_us());
 
-        auto build_static_model = [&core, &config, dump_ir, dump_ir_timestamp](
+        auto build_static_model = [&core, dump_ir, dump_ir_timestamp](
                           std::shared_ptr<GgmlOvDecoder> decoder,
                           const char * tag,
+                          const ov::AnyMap & model_config,
                           std::shared_ptr<ov::Model> & model,
                           ov::CompiledModel & compiled_model,
                           std::shared_ptr<ov::InferRequest> & infer_request,
@@ -851,7 +852,7 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
                 ov::serialize(model, timestamped_filename);
             }
 
-            compiled_model = core.compile_model(model, device, config);
+            compiled_model = core.compile_model(model, device, model_config);
             infer_request = std::make_shared<ov::InferRequest>(compiled_model.create_infer_request());
             local_compile_end_time = ggml_time_us();
         };
@@ -865,14 +866,22 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
         int64_t decode_conversion_end_time;
         int64_t prefill_compile_end_time;
         int64_t decode_compile_end_time;
+        // Decode is a stream of single-token infers where the folded NPUW function-call dispatch
+        // dominates; unfolding the funcalls into separate infer requests removes that overhead
+        // (~+20% tg, matching GenAI). Prefill keeps the folded form (faster for the batched prompt
+        // matmuls), so only the decode model is unfolded.
+        ov::AnyMap decode_config = config;
+        if (device == "NPU" && decode_config.find("NPUW_UNFOLD_IREQS") == decode_config.end()) {
+            decode_config["NPUW_UNFOLD_IREQS"] = "YES";
+        }
         auto prefill_future = std::async(std::launch::async, build_static_model, ggml_decoder_prefill, "prefill",
-                                         std::ref(model_prefill), std::ref(compiled_model_prefill),
+                                         std::cref(config), std::ref(model_prefill), std::ref(compiled_model_prefill),
                                          std::ref(infer_request_prefill), std::ref(prefill_conversion_end_time),
                                          std::ref(prefill_compile_end_time));
         auto decode_future = std::async(std::launch::async, build_static_model, ggml_decoder_decode, "decode",
-                                        std::ref(model_decode), std::ref(compiled_model_decode),
-                                        std::ref(infer_request_decode), std::ref(decode_conversion_end_time),
-                                        std::ref(decode_compile_end_time));
+                                        std::cref(decode_config), std::ref(model_decode),
+                                        std::ref(compiled_model_decode), std::ref(infer_request_decode),
+                                        std::ref(decode_conversion_end_time), std::ref(decode_compile_end_time));
         prefill_future.get();
         decode_future.get();
         conversion_end_time = std::max(prefill_conversion_end_time, decode_conversion_end_time);
