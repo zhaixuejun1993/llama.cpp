@@ -28,7 +28,7 @@ struct ModelParams {
     std::map<int, int> n_heads_kv_per_layer;
     int head_size = -1;
     int state_size = -1;  // for SSM molels, eg qwen35
-    int32_t rope_params[15];
+    int32_t rope_params[16];
     bool mixed_rope_params = false;
     bool is_cacheless_attn = false;
     std::vector<int> swa_layers;
@@ -42,7 +42,7 @@ struct ModelParams {
 
     bool same_rope_params(const ModelParams & other) const {
         return mixed_rope_params == other.mixed_rope_params &&
-               memcmp(rope_params, other.rope_params, sizeof(int32_t) * 15) == 0;
+               memcmp(rope_params, other.rope_params, sizeof(int32_t) * 16) == 0;
     }
 
     bool can_reuse_dynamically(const ModelParams & other) const { return same_rope_params(other); }
@@ -390,6 +390,13 @@ public:
         }
         return (tensor->buffer != nullptr && tensor->buffer->usage == GGML_BACKEND_BUFFER_USAGE_ANY) ||
                (op != nullptr && op->op == GGML_OP_SET_ROWS && op->src[2] == tensor);
+    }
+
+    inline static bool is_conv_state_writeback(const ggml_tensor * node) {
+        return node->op == GGML_OP_CPY && node->view_src != nullptr && is_kvcache(node->view_src, nullptr) &&
+               node->src[0] != nullptr && node->src[0]->op == GGML_OP_VIEW && node->src[0]->src[0] != nullptr &&
+               node->src[0]->src[0]->op == GGML_OP_CONCAT && node->src[1] != nullptr &&
+               node->src[1]->op == GGML_OP_VIEW && node->src[1]->view_src == node->view_src;
     }
 
     inline static bool is_kv_idx(const ggml_tensor * tensor, const ggml_tensor * op) {
