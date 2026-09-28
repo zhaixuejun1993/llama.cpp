@@ -112,6 +112,7 @@ bool ggml_openvino_is_npu();
 bool ggml_openvino_npu_kv_slice_enabled();
 bool ggml_openvino_npu_fast_mask_enabled();
 bool ggml_openvino_npu_l0_host_tensors_enabled();
+bool ggml_openvino_npu_hfa_prefill_enabled();
 
 // Host weight-buffer release (GGML_OPENVINO_RELEASE_WEIGHTS, GPU only).
 // register: record a host weight buffer (idempotent per data pointer).

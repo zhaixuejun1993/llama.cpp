@@ -95,6 +95,8 @@ struct ov_compiled_graph {
     ov::CompiledModel prefill;
     std::vector<std::string> input_names;
     std::vector<std::string> output_names;
+    std::vector<std::string> prefill_input_names;
+    std::vector<std::string> prefill_output_names;
 };
 
 // Only compilation and cache publication use this mutex. Requests, decoders and
@@ -119,6 +121,8 @@ struct ov_runtime_context {
     std::unordered_map<graph_key, std::shared_ptr<ov::InferRequest>, graph_key_hash> infer_request_cache_prefill;
     std::unordered_map<graph_key, std::vector<std::string>, graph_key_hash> ov_input_names_cache;
     std::unordered_map<graph_key, std::vector<std::string>, graph_key_hash> ov_output_names_cache;
+    std::unordered_map<graph_key, std::vector<std::string>, graph_key_hash> ov_input_names_cache_prefill;
+    std::unordered_map<graph_key, std::vector<std::string>, graph_key_hash> ov_output_names_cache_prefill;
     size_t stateful_kv_size;
     std::map<std::string, std::string> kv_state_input_name_map;
 
@@ -130,6 +134,8 @@ struct ov_runtime_context {
         infer_request_cache_prefill.clear();
         ov_input_names_cache.clear();
         ov_output_names_cache.clear();
+        ov_input_names_cache_prefill.clear();
+        ov_output_names_cache_prefill.clear();
         kv_state_input_name_map.clear();
         stateful_kv_size = 0;
     }
