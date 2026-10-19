@@ -83,11 +83,24 @@ struct graph_key_hash {
     }
 };
 
+// Plain host-side (pointer, byte_size) signature for an I/O port's currently-bound tensor.
+// GGML_OPENVINO_NPU_SKIP_REBIND (experimental, default off): used instead of comparing against
+// InferRequest::get_*_tensor(), which itself carries significant per-call overhead on at least
+// one NPU driver tested -- see ov_runtime_context::bound_input_sig_cache.
+struct port_signature {
+    const void * data = nullptr;
+    size_t bytes = 0;
+    bool operator==(const port_signature & o) const { return data == o.data && bytes == o.bytes; }
+};
+
 struct decoder_runtime_ctx {
     decoder_runtime_ctx(std::shared_ptr<std::mutex> mutex) : mutex(std::move(mutex)) {}
 
     std::shared_ptr<std::mutex> mutex;
     std::shared_ptr<GgmlOvDecoder> ptr;
+    // Attention sizes the cached prefill model was built with; decode calls overwrite the decoder's.
+    int prefill_attention_size = -1;
+    int prefill_attention_size_swa = -1;
 };
 
 struct ov_compiled_graph {
@@ -97,6 +110,16 @@ struct ov_compiled_graph {
     std::vector<std::string> output_names;
     std::vector<std::string> prefill_input_names;
     std::vector<std::string> prefill_output_names;
+    // GGML_OPENVINO_NPU_SPLIT_LM_HEAD (experimental, default off): the final output-projection
+    // (lm_head) matmul, compiled as its own standalone model instead of being bundled into
+    // decode/prefill. Empty (operator bool() == false) when the flag is off or the split wasn't
+    // performed (e.g. a graph with no matching tail pattern). The body model (decode/prefill
+    // above) then exposes the pre-lm_head hidden state as an extra output named
+    // lm_head_boundary_name instead of the real logits output.
+    ov::CompiledModel decode_lm_head;
+    ov::CompiledModel prefill_lm_head;
+    std::string lm_head_boundary_name;
+    std::string lm_head_output_name;
 };
 
 // Only compilation and cache publication use this mutex. Requests, decoders and
@@ -126,6 +149,30 @@ struct ov_runtime_context {
     size_t stateful_kv_size;
     std::map<std::string, std::string> kv_state_input_name_map;
 
+    // GGML_OPENVINO_NPU_SPLIT_LM_HEAD (experimental, default off, decode only): the standalone
+    // lm_head InferRequest for this key (absent/null when the split wasn't performed for this
+    // graph), plus the boundary/output tensor names needed to wire body -> lm_head at execution
+    // time. Populated alongside infer_request_cache; see ov_graph_compute_static.
+    std::unordered_map<graph_key, std::shared_ptr<ov::InferRequest>, graph_key_hash> infer_request_cache_lm_head;
+    std::unordered_map<graph_key, std::string, graph_key_hash> lm_head_boundary_name_cache;
+    std::unordered_map<graph_key, std::string, graph_key_hash> lm_head_output_name_cache;
+
+    // GGML_OPENVINO_NPU_SKIP_REBIND (experimental, default off): last-bound (pointer, byte_size)
+    // per I/O port index for this key, so set_input_tensor/set_output_tensor can be skipped when
+    // nothing changed since the previous call. Only ever touched while execution_mutex is held
+    // (see ov_graph_compute), so no separate lock is needed here.
+    std::unordered_map<graph_key, std::vector<port_signature>, graph_key_hash> bound_input_sig_cache;
+    std::unordered_map<graph_key, std::vector<port_signature>, graph_key_hash> bound_output_sig_cache;
+
+    // GGML_OPENVINO_NPU_SPLIT_LM_HEAD (experimental, default off): the lm_head sub-request is
+    // kicked off with start_async() instead of a blocking infer(), so its NPU execution can
+    // overlap with whatever host-side work ggml-backend's caller does between dispatching this
+    // graph_compute and actually reading the output tensor (ggml_backend_tensor_get_async falls
+    // back to ggml_backend_synchronize() + a blocking copy when .get_tensor_async is NULL, which
+    // is exactly the hook below uses to perform the deferred wait()). Any pending request here
+    // is also waited on defensively at the start of the next ov_graph_compute call.
+    std::shared_ptr<ov::InferRequest> pending_lm_head_wait;
+
     ov_runtime_context() : device("CPU"), stateful(false), stateful_kv_size(0) {}
 
     void clear_caches_locked() {
@@ -138,6 +185,11 @@ struct ov_runtime_context {
         ov_output_names_cache_prefill.clear();
         kv_state_input_name_map.clear();
         stateful_kv_size = 0;
+        infer_request_cache_lm_head.clear();
+        lm_head_boundary_name_cache.clear();
+        lm_head_output_name_cache.clear();
+        bound_input_sig_cache.clear();
+        bound_output_sig_cache.clear();
     }
 
     void clear_caches() {

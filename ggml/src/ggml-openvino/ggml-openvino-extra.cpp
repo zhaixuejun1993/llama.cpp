@@ -77,6 +77,21 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_SELF_CONTAINED_BLOB",
         "GGML_OPENVINO_SELF_CONTAINED_MMAP",
         "GGML_OPENVINO_NPU_SHARED_BANK",
+        "GGML_OPENVINO_LOG_ALLOC",
+        "GGML_OPENVINO_RESIDENT_PROBE",
+        // Experimental, default-off: compile the final output-projection (lm_head) matmul as
+        // its own standalone NPU model instead of bundling it into decode/prefill. See
+        // split_lm_head in utils.cpp.
+        "GGML_OPENVINO_NPU_SPLIT_LM_HEAD",
+        // Experimental, default-off: skip set_input_tensor/set_output_tensor when the port's
+        // (pointer, byte_size) hasn't changed since the last call. See
+        // ov_runtime_context::bound_input_sig_cache in utils.h.
+        "GGML_OPENVINO_NPU_SKIP_REBIND",
+        // Experimental, only used when GGML_OPENVINO_NPU_SPLIT_LM_HEAD is also set: target device
+        // for the standalone lm_head submodel (e.g. "CPU", "GPU"). Defaults to the same device as
+        // the rest of the graph (NPU) when unset. The lm_head matmul is a single-vector x huge-
+        // matrix GEMV that profiled faster on CPU/GPU than NPU in isolation; see utils.cpp.
+        "GGML_OPENVINO_NPU_LM_HEAD_DEVICE",
     };
 
     for (const char * const & env_var : env_var_names) {
@@ -280,6 +295,14 @@ bool ggml_openvino_npu_l0_host_tensors_enabled() {
 
 bool ggml_openvino_npu_hfa_prefill_enabled() {
     return ggml_openvino_is_npu() && ggml_openvino_getenv_int("GGML_OPENVINO_NPU_HFA_PREFILL") != 0;
+}
+
+bool ggml_openvino_npu_split_lm_head_enabled() {
+    return ggml_openvino_is_npu() && ggml_openvino_getenv_int("GGML_OPENVINO_NPU_SPLIT_LM_HEAD") != 0;
+}
+
+bool ggml_openvino_npu_skip_rebind_enabled() {
+    return ggml_openvino_is_npu() && ggml_openvino_getenv_int("GGML_OPENVINO_NPU_SKIP_REBIND") != 0;
 }
 
 // Get the remote context for the current device (returns empty optional for CPU)

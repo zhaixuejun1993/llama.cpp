@@ -113,6 +113,9 @@ bool ggml_openvino_npu_kv_slice_enabled();
 bool ggml_openvino_npu_fast_mask_enabled();
 bool ggml_openvino_npu_l0_host_tensors_enabled();
 bool ggml_openvino_npu_hfa_prefill_enabled();
+// Experimental, default-off perf toggles under investigation (see utils.cpp/utils.h).
+bool ggml_openvino_npu_split_lm_head_enabled();
+bool ggml_openvino_npu_skip_rebind_enabled();
 
 // Host weight-buffer release (GGML_OPENVINO_RELEASE_WEIGHTS, GPU only).
 // register: record a host weight buffer (idempotent per data pointer).
@@ -121,6 +124,16 @@ bool ggml_openvino_npu_hfa_prefill_enabled();
 void ggml_openvino_register_weight_buffer(void * data, size_t size);
 void ggml_openvino_release_weight_buffers();
 bool ggml_openvino_weight_buffers_released();
+
+// Resident-page probe (GGML_OPENVINO_RESIDENT_PROBE=1, Windows). Records every OV
+// backend buffer (ptr/size/lazy) at alloc time, then ggml_openvino_probe_residency()
+// reports how much of each is actually resident (QueryWorkingSetEx Valid bit) at the
+// call site -- used to pin down which buffer faults in during prefill, per chunk.
+void ggml_openvino_probe_register_buffer(void * data, size_t size, bool lazy);
+void ggml_openvino_probe_residency(const char * tag);
+
+// Current process working set in MiB (Windows only; 0 elsewhere).
+double ggml_openvino_process_ws_mib();
 
 // Get requantization type for a tensor type (returns nullopt if no requant needed)
 std::optional<ExtraQuantType> ggml_openvino_get_requant_type(const ggml_tensor * tensor, bool no_requant = false);

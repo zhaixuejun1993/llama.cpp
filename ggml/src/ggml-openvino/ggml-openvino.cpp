@@ -39,6 +39,8 @@
 #        define NOMINMAX
 #    endif
 #    include <windows.h>
+#    include <psapi.h>
+#    pragma comment(lib, "psapi.lib")
 #else
 #    include <sys/mman.h>
 #    include <unistd.h>
@@ -142,8 +144,13 @@ struct ggml_backend_openvino_buffer_context {
                                      ggml_openvino_getenv_int("GGML_OPENVINO_SELF_CONTAINED_BLOB") &&
                                      ggml_openvino_getenv_int("GGML_OPENVINO_SELF_CONTAINED_MMAP") &&
                                      ggml_openvino_getenv_str("GGML_OPENVINO_COMPILED_MODEL_CACHE_DIR");
-            const size_t lazy_host_threshold = (size_t) 1024 * 1024 * 1024;  // 1 GiB
+            const size_t lazy_host_threshold = (size_t) 512 * 1024 * 1024;  // 512 MiB
             const bool lazy_host_alloc = strict_mmap && size >= lazy_host_threshold;
+            if (ggml_openvino_getenv_int("GGML_OPENVINO_LOG_ALLOC")) {
+                fprintf(stderr, "OV_ALLOC size=%.1f MiB (%zu bytes) lazy=%d dev=%s\n",
+                        size / 1048576.0, size, (int) lazy_host_alloc, device_name.c_str());
+                fflush(stderr);
+            }
             // Prefer importable Level Zero host memory on NPU: the plugin imports it without an
             // extra host-to-device copy each infer.
             if (!lazy_host_alloc && device_name == "NPU" && ggml_openvino_npu_l0_host_tensors_enabled()) {
@@ -154,6 +161,7 @@ struct ggml_backend_openvino_buffer_context {
                     memset(data, 0, size);
                     ov_buffer = std::make_shared<ov::Tensor>(std::move(host_tensor));
                     data_owned_by_ov = true;
+                    ggml_openvino_probe_register_buffer(data, size, /*lazy=*/false);
                 } catch (const std::exception & e) {
                     GGML_LOG_WARN("%s: L0 host tensor allocation of %zu bytes failed (%s); using aligned malloc\n",
                                   __func__, size, e.what());
@@ -214,6 +222,7 @@ struct ggml_backend_openvino_buffer_context {
                 }
                 ov_buffer = std::make_shared<ov::Tensor>(ov::element::u8, ov::Shape{size}, data);
             }
+            ggml_openvino_probe_register_buffer(data, size, lazy_host_alloc);
         }
 
         if (data == nullptr) {
@@ -326,6 +335,87 @@ void ggml_openvino_release_weight_buffers() {
     reg.released = true;
     GGML_LOG_INFO("%s: released %zu MB of host weight buffers (%zu buffers)\n", __func__, total / 1024 / 1024,
                   reg.buffers.size());
+}
+
+// =====================================================
+// Resident-page probe (GGML_OPENVINO_RESIDENT_PROBE)
+// =====================================================
+namespace {
+struct ov_probe_registry {
+    std::mutex mutex;
+    struct entry { void * data; size_t size; bool lazy; };
+    std::vector<entry> buffers;
+};
+ov_probe_registry & ov_probe_reg() {
+    static ov_probe_registry reg;
+    return reg;
+}
+}  // namespace
+
+void ggml_openvino_probe_register_buffer(void * data, size_t size, bool lazy) {
+    if (data == nullptr || size == 0) {
+        return;
+    }
+    auto & reg = ov_probe_reg();
+    std::lock_guard<std::mutex> lock(reg.mutex);
+    for (const auto & b : reg.buffers) {
+        if (b.data == data) {
+            return;
+        }
+    }
+    reg.buffers.push_back({ data, size, lazy });
+}
+
+void ggml_openvino_probe_residency(const char * tag) {
+    if (!ggml_openvino_getenv_int("GGML_OPENVINO_RESIDENT_PROBE")) {
+        return;
+    }
+#if defined(_WIN32)
+    auto & reg = ov_probe_reg();
+    std::lock_guard<std::mutex> lock(reg.mutex);
+    const size_t page = 4096;
+    const size_t block_pages = 16384;  // 64 MiB coverage per QueryWorkingSetEx call
+    std::vector<PSAPI_WORKING_SET_EX_INFORMATION> info(block_pages);
+    HANDLE proc = GetCurrentProcess();
+    for (const auto & b : reg.buffers) {
+        // Only report sizable buffers; small KV/IO buffers are noise here.
+        if (b.size < (size_t) 64 * 1024 * 1024) {
+            continue;
+        }
+        const size_t n_pages = b.size / page;
+        size_t resident_pages = 0;
+        size_t done = 0;
+        while (done < n_pages) {
+            const size_t cur = std::min(block_pages, n_pages - done);
+            for (size_t i = 0; i < cur; i++) {
+                info[i].VirtualAddress = (char *) b.data + (done + i) * page;
+            }
+            if (QueryWorkingSetEx(proc, info.data(), (DWORD) (cur * sizeof(info[0])))) {
+                for (size_t i = 0; i < cur; i++) {
+                    if (info[i].VirtualAttributes.Valid) {
+                        resident_pages++;
+                    }
+                }
+            }
+            done += cur;
+        }
+        fprintf(stderr, "RESIDENT_PROBE %-16s buf=%p lazy=%d total=%.1f MiB resident=%.1f MiB\n", tag, b.data,
+                (int) b.lazy, b.size / 1048576.0, resident_pages * page / 1048576.0);
+    }
+    fflush(stderr);
+#else
+    (void) tag;
+#endif
+}
+
+double ggml_openvino_process_ws_mib() {
+#if defined(_WIN32)
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+        return pmc.WorkingSetSize / 1048576.0;
+    }
+#endif
+    return 0.0;
 }
 
 // Buffer interface functions
@@ -871,6 +961,29 @@ static enum ggml_status ggml_backend_openvino_graph_compute(ggml_backend_t backe
     GGML_UNUSED(backend);
 }
 
+// GGML_OPENVINO_NPU_SPLIT_LM_HEAD (experimental, default off): completes whatever lm_head
+// InferRequest was kicked off with start_async() in ov_graph_compute_static. The ggml-backend
+// framework calls this (via ggml_backend_synchronize(), including from
+// ggml_backend_tensor_get_async()'s fallback path since .get_tensor_async is NULL below) before
+// any caller reads this backend's output tensors, so this is the real, safe wait point -- not
+// just best-effort overlap.
+static void ggml_backend_openvino_synchronize(ggml_backend_t backend) {
+    ggml_backend_openvino_context * ctx = (ggml_backend_openvino_context *) backend->context;
+    if (ctx->runtime_context == nullptr) {
+        return;
+    }
+    auto r_ctx = std::static_pointer_cast<ov_runtime_context>(ctx->runtime_context);
+    if (r_ctx->pending_lm_head_wait) {
+        const int64_t wait_start = ggml_time_us();
+        r_ctx->pending_lm_head_wait->wait();
+        r_ctx->pending_lm_head_wait.reset();
+        if (ggml_openvino_getenv_int("GGML_OPENVINO_PROFILING")) {
+            fprintf(stderr, "GGML OpenVINO profiling: lm_head wait() in synchronize: %.3f ms\n",
+                    (ggml_time_us() - wait_start) / 1000.0);
+        }
+    }
+}
+
 static const ggml_backend_i ggml_backend_openvino_interface = {
     /* .get_name                = */ ggml_backend_openvino_get_name,
     /* .free                    = */ ggml_backend_openvino_free,
@@ -879,7 +992,7 @@ static const ggml_backend_i ggml_backend_openvino_interface = {
     /* .set_tensor_2d_async     = */ NULL,
     /* .get_tensor_2d_async     = */ NULL,
     /* .cpy_tensor_async        = */ NULL,
-    /* .synchronize             = */ NULL,
+    /* .synchronize             = */ ggml_backend_openvino_synchronize,
     /* .graph_plan_create       = */ NULL,
     /* .graph_plan_free         = */ NULL,
     /* .graph_plan_update       = */ NULL,

@@ -34,6 +34,8 @@
 #        define NOMINMAX
 #    endif
 #    include <windows.h>
+#    include <psapi.h>
+#    pragma comment(lib, "psapi.lib")
 #endif
 
 // utils
@@ -41,6 +43,55 @@ static uint64_t get_time_ns() {
     using clock = std::chrono::high_resolution_clock;
     return std::chrono::nanoseconds(clock::now().time_since_epoch()).count();
 }
+
+// Per-phase working-set profiler, enabled with LLAMA_BENCH_WS_PROFILE=1.
+struct bench_ws_profile {
+    bool        enabled = false;
+    size_t      peak_kb = 0;
+    bench_ws_profile() {
+        const char * e = getenv("LLAMA_BENCH_WS_PROFILE");
+        enabled = (e && e[0] == '1');
+    }
+    static size_t cur_ws_kb() {
+#ifdef _WIN32
+        PROCESS_MEMORY_COUNTERS pmc;
+        if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+            return (size_t) (pmc.WorkingSetSize / 1024);
+        }
+#endif
+        return 0;
+    }
+    // OS-tracked process peak WS; catches spikes released before the phase ends
+    static size_t os_peak_kb() {
+#ifdef _WIN32
+        PROCESS_MEMORY_COUNTERS pmc;
+        if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+            return (size_t) (pmc.PeakWorkingSetSize / 1024);
+        }
+#endif
+        return 0;
+    }
+    void mark(const char * phase) {
+        if (!enabled) { return; }
+        size_t kb = cur_ws_kb();
+        if (kb > peak_kb) { peak_kb = kb; }
+        fprintf(stderr, "WS_PROFILE %-16s ws=%.1f MiB peak=%.1f MiB ospeak=%.1f MiB\n",
+                phase, kb / 1024.0, peak_kb / 1024.0, os_peak_kb() / 1024.0);
+        fflush(stderr);
+    }
+    // returns delta MiB since 'before'
+    double delta(const char * phase, size_t before_kb) {
+        if (!enabled) { return 0.0; }
+        size_t kb = cur_ws_kb();
+        if (kb > peak_kb) { peak_kb = kb; }
+        double d = (double) kb / 1024.0 - (double) before_kb / 1024.0;
+        fprintf(stderr, "WS_PROFILE %-16s delta=%+.1f MiB end=%.1f MiB peak=%.1f MiB ospeak=%.1f MiB\n",
+                phase, d, kb / 1024.0, peak_kb / 1024.0, os_peak_kb() / 1024.0);
+        fflush(stderr);
+        return d;
+    }
+};
+static bench_ws_profile g_ws_profile;
 
 static bool tensor_buft_override_equal(const llama_model_tensor_buft_override& a, const llama_model_tensor_buft_override& b) {
     if (a.pattern != b.pattern) {
@@ -1303,6 +1354,8 @@ struct cmd_params_instance {
 
 static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_params & params) {
     std::vector<cmd_params_instance> instances;
+    // -pg runs only the combined prefill+decode tests
+    const bool pg_only = !params.n_pg.empty();
 
     // this ordering minimizes the number of times that each model needs to be reloaded
     // clang-format off
@@ -1333,7 +1386,7 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
     for (const auto & nd : params.n_depth)
     for (const auto & pl : params.poll) {
         for (const auto & n_prompt : params.n_prompt) {
-            if (n_prompt == 0) {
+            if (n_prompt == 0 || pg_only) {
                 continue;
             }
             cmd_params_instance instance = {
@@ -1370,7 +1423,7 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
         }
 
         for (const auto & n_gen : params.n_gen) {
-            if (n_gen == 0) {
+            if (n_gen == 0 || pg_only) {
                 continue;
             }
             cmd_params_instance instance = {
@@ -2274,7 +2327,7 @@ int llama_bench(int argc, char ** argv) {
     ctx_state cstate;
 
     int  params_idx   = 0;
-    auto params_count = params_instances.size();
+    auto params_count = params_instances.size(); 
     for (const auto & inst : params_instances) {
         params_idx++;
         if (params.progress) {
@@ -2323,20 +2376,25 @@ int llama_bench(int argc, char ** argv) {
                 llama_model_free(lmodel);
             }
 
+            size_t ws_before_load = bench_ws_profile::cur_ws_kb();
+            g_ws_profile.mark("instance_start");
             lmodel = llama_model_load_from_file(inst.model.c_str(), mparams);
             if (lmodel == NULL) {
                 fprintf(stderr, "%s: error: failed to load model '%s'\n", __func__, inst.model.c_str());
                 return 1;
             }
+            g_ws_profile.delta("model_loading", ws_before_load);
             prev_inst = &inst;
         }
 
+        size_t ws_before_ctx = bench_ws_profile::cur_ws_kb();
         llama_context * ctx = llama_init_from_model(lmodel, cparams);
         if (ctx == NULL) {
             fprintf(stderr, "%s: error: failed to create context with model '%s'\n", __func__, inst.model.c_str());
             llama_model_free(lmodel);
             return 1;
         }
+        g_ws_profile.delta("context_create", ws_before_ctx);
 
         test t(inst, lmodel, ctx);
 
@@ -2375,6 +2433,7 @@ int llama_bench(int argc, char ** argv) {
                     fprintf(stderr, "llama-bench: benchmark %d/%zu: warmup prompt run\n", params_idx, params_count);
                 }
                 //test_prompt(ctx, std::min(t.n_batch, std::min(t.n_prompt, 32)), 0, t.n_batch, t.n_threads);
+                size_t ws_before_warm = bench_ws_profile::cur_ws_kb();
                 bool res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads);
                 if (!res) {
                     fprintf(stderr, "%s: error: failed to run prompt warmup\n", __func__);
@@ -2382,11 +2441,13 @@ int llama_bench(int argc, char ** argv) {
                     llama_model_free(lmodel);
                     exit(1);
                 }
+                g_ws_profile.delta("warmup_prompt", ws_before_warm);
             }
             if (t.n_gen > 0) {
                 if (params.progress) {
                     fprintf(stderr, "llama-bench: benchmark %d/%zu: warmup generation run\n", params_idx, params_count);
                 }
+                size_t ws_before_warm = bench_ws_profile::cur_ws_kb();
                 bool res = test_gen(ctx, 1, t.n_threads);
                 if (!res) {
                     fprintf(stderr, "%s: error: failed to run gen warmup\n", __func__);
@@ -2394,8 +2455,14 @@ int llama_bench(int argc, char ** argv) {
                     llama_model_free(lmodel);
                     exit(1);
                 }
+                g_ws_profile.delta("warmup_gen", ws_before_warm);
             }
         }
+
+        uint64_t pp_ns_total = 0;   // accumulated prefill time across reps (for -pg split)
+        uint64_t tg_ns_total = 0;   // accumulated decode time across reps (for -pg split)
+        std::vector<uint64_t> pp_ns_per_rep;   // per-rep prefill time (for -pg split)
+        std::vector<uint64_t> tg_ns_per_rep;   // per-rep decode time (for -pg split)
 
         for (int i = 0; i < params.reps; i++) {
             llama_memory_clear(llama_get_memory(ctx), false);
@@ -2417,6 +2484,7 @@ int llama_bench(int argc, char ** argv) {
                         fprintf(stderr, "llama-bench: benchmark %d/%zu: depth run %d/%d\n", params_idx, params_count,
                                 i + 1, params.reps);
                     }
+                    size_t ws_before_depth = bench_ws_profile::cur_ws_kb();
                     bool res = test_prompt(ctx, t.n_depth, t.n_batch, t.n_threads);
                     if (!res) {
                         fprintf(stderr, "%s: error: failed to run depth\n", __func__);
@@ -2424,6 +2492,7 @@ int llama_bench(int argc, char ** argv) {
                         llama_model_free(lmodel);
                         exit(1);
                     }
+                    if (i == 0) { g_ws_profile.delta("depth_prefill", ws_before_depth); }
 
                     // store the context state for reuse in later runs
                     cstate.depth = t.n_depth;
@@ -2444,30 +2513,60 @@ int llama_bench(int argc, char ** argv) {
                     fprintf(stderr, "llama-bench: benchmark %d/%zu: prompt run %d/%d\n", params_idx, params_count,
                             i + 1, params.reps);
                 }
+                size_t ws_before_pp = bench_ws_profile::cur_ws_kb();
+                uint64_t pp_t0 = get_time_ns();
                 bool res = test_prompt(ctx, t.n_prompt, t.n_batch, t.n_threads);
+                uint64_t pp_ns_this = get_time_ns() - pp_t0;
+                pp_ns_total += pp_ns_this;
+                pp_ns_per_rep.push_back(pp_ns_this);
                 if (!res) {
                     fprintf(stderr, "%s: error: failed to run prompt\n", __func__);
                     llama_free(ctx);
                     llama_model_free(lmodel);
                     exit(1);
                 }
+                if (i == 0) { g_ws_profile.delta("prefill", ws_before_pp); }
             }
             if (t.n_gen > 0) {
                 if (params.progress) {
                     fprintf(stderr, "llama-bench: benchmark %d/%zu: generation run %d/%d\n", params_idx, params_count,
                             i + 1, params.reps);
                 }
+                size_t ws_before_tg = bench_ws_profile::cur_ws_kb();
+                uint64_t tg_t0 = get_time_ns();
                 bool res = test_gen(ctx, t.n_gen, t.n_threads);
+                uint64_t tg_ns_this = get_time_ns() - tg_t0;
+                tg_ns_total += tg_ns_this;
+                tg_ns_per_rep.push_back(tg_ns_this);
                 if (!res) {
                     fprintf(stderr, "%s: error: failed to run gen\n", __func__);
                     llama_free(ctx);
                     llama_model_free(lmodel);
                     exit(1);
                 }
+                if (i == 0) { g_ws_profile.delta("decode", ws_before_tg); }
             }
 
             uint64_t t_ns = get_time_ns() - t_start;
             t.samples_ns.push_back(t_ns);
+        }
+
+        // For the combined -pg case (both prompt and gen in one test), emit the
+        // prefill-only and decode-only throughput that the standard table hides.
+        if (t.n_prompt > 0 && t.n_gen > 0 && params.reps > 0) {
+            double pp_s = (double) pp_ns_total / 1e9 / params.reps;
+            double tg_s = (double) tg_ns_total / 1e9 / params.reps;
+            double pp_tps = pp_s > 0 ? t.n_prompt / pp_s : 0.0;
+            double tg_tps = tg_s > 0 ? t.n_gen / tg_s : 0.0;
+            fprintf(stderr, "PG_SPLIT pp_tokens=%d pp_tps=%.2f tg_tokens=%d tg_tps=%.2f\n",
+                    t.n_prompt, pp_tps, t.n_gen, tg_tps);
+            for (size_t r = 0; r < pp_ns_per_rep.size(); r++) {
+                double rep_pp_tps = pp_ns_per_rep[r] > 0 ? t.n_prompt / ((double) pp_ns_per_rep[r] / 1e9) : 0.0;
+                double rep_tg_tps = (r < tg_ns_per_rep.size() && tg_ns_per_rep[r] > 0)
+                                        ? t.n_gen / ((double) tg_ns_per_rep[r] / 1e9) : 0.0;
+                fprintf(stderr, "PG_SPLIT_REP rep=%zu pp_tps=%.2f tg_tps=%.2f\n", r, rep_pp_tps, rep_tg_tps);
+            }
+            fflush(stderr);
         }
 
         if (p) {
