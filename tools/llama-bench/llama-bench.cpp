@@ -1103,10 +1103,11 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
     if (params.model.empty()) {
         params.model = cmd_params_defaults.model;
     }
-    if (params.n_prompt.empty()) {
+    // with -pg, only run the default pp/tg tests when -p/-n are given explicitly
+    if (params.n_prompt.empty() && params.n_pg.empty()) {
         params.n_prompt = cmd_params_defaults.n_prompt;
     }
-    if (params.n_gen.empty()) {
+    if (params.n_gen.empty() && params.n_pg.empty()) {
         params.n_gen = cmd_params_defaults.n_gen;
     }
     if (params.n_pg.empty()) {
@@ -1486,6 +1487,8 @@ struct test {
     int                      n_depth;
     std::string              test_time;
     std::vector<uint64_t>    samples_ns;
+    std::vector<uint64_t>    samples_pg_pp_ns; // prefill part of each pp+tg sample
+    std::vector<uint64_t>    samples_pg_tg_ns; // decode part of each pp+tg sample
 
     test(const cmd_params_instance & inst, const llama_model * lmodel, const llama_context * ctx) :
         cpu_info(get_cpu_info()),
@@ -1548,6 +1551,27 @@ struct test {
 
     double stdev_ts() const { return ::stdev(get_ts()); }
 
+    bool is_pg() const { return n_prompt > 0 && n_gen > 0; }
+
+    static std::vector<double> to_ts(const std::vector<uint64_t> & samples, int n_tokens) {
+        std::vector<double> ts;
+        std::transform(samples.begin(), samples.end(), std::back_inserter(ts),
+                       [n_tokens](uint64_t t) { return 1e9 * n_tokens / t; });
+        return ts;
+    }
+
+    std::vector<double> get_pg_pp_ts() const { return to_ts(samples_pg_pp_ns, n_prompt); }
+
+    std::vector<double> get_pg_tg_ts() const { return to_ts(samples_pg_tg_ns, n_gen); }
+
+    double avg_pg_pp_ts() const { return ::avg(get_pg_pp_ts()); }
+
+    double stdev_pg_pp_ts() const { return ::stdev(get_pg_pp_ts()); }
+
+    double avg_pg_tg_ts() const { return ::avg(get_pg_tg_ts()); }
+
+    double stdev_pg_tg_ts() const { return ::stdev(get_pg_tg_ts()); }
+
     static std::string get_backend() {
         std::vector<std::string> backends;
         bool                     rpc_used = false;
@@ -1581,7 +1605,8 @@ struct test {
             "embeddings",
             "no_op_offload",  "no_host",        "fit_target",    "fit_min_ctx",
             "n_prompt",       "n_gen",          "n_depth",
-            "test_time",      "avg_ns",         "stddev_ns",     "avg_ts",         "stddev_ts"
+            "test_time",      "avg_ns",         "stddev_ns",     "avg_ts",         "stddev_ts",
+            "pg_pp_tps",      "pg_pp_stddev_tps",                "pg_tg_tps",      "pg_tg_stddev_tps"
         };
         return fields;
     }
@@ -1600,7 +1625,8 @@ struct test {
             field == "embeddings" || field == "no_host") {
             return BOOL;
         }
-        if (field == "avg_ts" || field == "stddev_ts") {
+        if (field == "avg_ts" || field == "stddev_ts" || field == "pg_pp_tps" || field == "pg_pp_stddev_tps" ||
+            field == "pg_tg_tps" || field == "pg_tg_stddev_tps") {
             return FLOAT;
         }
         if (field == "load_mode" || field == "lazy_mode") {
@@ -1686,7 +1712,11 @@ struct test {
                                             std::to_string(avg_ns()),
                                             std::to_string(stdev_ns()),
                                             std::to_string(avg_ts()),
-                                            std::to_string(stdev_ts()) };
+                                            std::to_string(stdev_ts()),
+                                            std::to_string(avg_pg_pp_ts()),
+                                            std::to_string(stdev_pg_pp_ts()),
+                                            std::to_string(avg_pg_tg_ts()),
+                                            std::to_string(stdev_pg_tg_ts()) };
         return values;
     }
 
@@ -1828,7 +1858,7 @@ struct markdown_printer : public printer {
         if (field == "model") {
             return -30;
         }
-        if (field == "t/s") {
+        if (field == "t/s" || field == "pg_pp_tps" || field == "pg_tg_tps") {
             return 20;
         }
         if (field == "size" || field == "params") {
@@ -2008,6 +2038,10 @@ struct markdown_printer : public printer {
         }
         fields.emplace_back("test");
         fields.emplace_back("t/s");
+        if (!params.n_pg.empty()) {
+            fields.emplace_back("pg_pp_tps");
+            fields.emplace_back("pg_tg_tps");
+        }
 
         fprintf(fout, "|");
         for (const auto & field : fields) {
@@ -2063,6 +2097,16 @@ struct markdown_printer : public printer {
             } else if (field == "t/s") {
                 snprintf(buf, sizeof(buf), "%.2f ± %.2f", t.avg_ts(), t.stdev_ts());
                 value = buf;
+            } else if (field == "pg_pp_tps" || field == "pg_tg_tps") {
+                if (!t.is_pg()) {
+                    value = "-";
+                } else if (field == "pg_pp_tps") {
+                    snprintf(buf, sizeof(buf), "%.2f ± %.2f", t.avg_pg_pp_ts(), t.stdev_pg_pp_ts());
+                    value = buf;
+                } else {
+                    snprintf(buf, sizeof(buf), "%.2f ± %.2f", t.avg_pg_tg_ts(), t.stdev_pg_tg_ts());
+                    value = buf;
+                }
             } else if (vmap.find(field) != vmap.end()) {
                 value = vmap.at(field);
             } else {
@@ -2071,7 +2115,7 @@ struct markdown_printer : public printer {
             }
 
             int width = get_field_width(field);
-            if (field == "t/s") {
+            if (value.find("±") != std::string::npos) {
                 // HACK: the utf-8 character is 2 bytes
                 width += 1;
             }
@@ -2452,6 +2496,7 @@ int llama_bench(int argc, char ** argv) {
                     exit(1);
                 }
             }
+            uint64_t t_pp_end = get_time_ns();
             if (t.n_gen > 0) {
                 if (params.progress) {
                     fprintf(stderr, "llama-bench: benchmark %d/%zu: generation run %d/%d\n", params_idx, params_count,
@@ -2466,8 +2511,17 @@ int llama_bench(int argc, char ** argv) {
                 }
             }
 
-            uint64_t t_ns = get_time_ns() - t_start;
-            t.samples_ns.push_back(t_ns);
+            uint64_t t_end = get_time_ns();
+            t.samples_ns.push_back(t_end - t_start);
+            if (t.is_pg()) {
+                t.samples_pg_pp_ns.push_back(t_pp_end - t_start);
+                t.samples_pg_tg_ns.push_back(t_end - t_pp_end);
+            }
+        }
+
+        if (t.is_pg()) {
+            fprintf(stderr, "PG_SPLIT pp_tokens=%d pp_tps=%.2f tg_tokens=%d tg_tps=%.2f\n", t.n_prompt,
+                    t.avg_pg_pp_ts(), t.n_gen, t.avg_pg_tg_ts());
         }
 
         if (p) {
