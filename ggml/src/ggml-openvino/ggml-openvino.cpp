@@ -144,7 +144,8 @@ struct ggml_backend_openvino_buffer_context {
                                      ggml_openvino_getenv_int("GGML_OPENVINO_SELF_CONTAINED_BLOB") &&
                                      ggml_openvino_getenv_int("GGML_OPENVINO_SELF_CONTAINED_MMAP") &&
                                      ggml_openvino_getenv_str("GGML_OPENVINO_COMPILED_MODEL_CACHE_DIR");
-            const size_t lazy_host_threshold = (size_t) 512 * 1024 * 1024;  // 512 MiB
+            const int threshold_mb = ggml_openvino_getenv_int("GGML_OPENVINO_LAZY_HOST_THRESHOLD_MB");
+            const size_t lazy_host_threshold = (size_t) (threshold_mb > 0 ? threshold_mb : 512) * 1024 * 1024;
             const bool lazy_host_alloc = strict_mmap && size >= lazy_host_threshold;
             if (ggml_openvino_getenv_int("GGML_OPENVINO_LOG_ALLOC")) {
                 fprintf(stderr, "OV_ALLOC size=%.1f MiB (%zu bytes) lazy=%d dev=%s\n",
@@ -416,6 +417,16 @@ double ggml_openvino_process_ws_mib() {
     }
 #endif
     return 0.0;
+}
+
+uint64_t ggml_openvino_process_page_faults() {
+#if defined(_WIN32)
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+        return pmc.PageFaultCount;
+    }
+#endif
+    return 0;
 }
 
 // Buffer interface functions

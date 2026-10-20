@@ -9,6 +9,7 @@
 #include <openvino/runtime/intel_npu/level_zero/level_zero.hpp>
 #include <openvino/runtime/properties.hpp>
 #include <optional>
+#include <vector>
 
 ov::Core & ov_singleton_core() {
     static ov::Core core;
@@ -79,6 +80,7 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_NPU_SHARED_BANK",
         "GGML_OPENVINO_LOG_ALLOC",
         "GGML_OPENVINO_RESIDENT_PROBE",
+        "GGML_OPENVINO_LAZY_HOST_THRESHOLD_MB",
         // Experimental, default-off: compile the final output-projection (lm_head) matmul as
         // its own standalone NPU model instead of bundling it into decode/prefill. See
         // split_lm_head in utils.cpp.
@@ -92,6 +94,18 @@ void ggml_openvino_device_config::init() {
         // the rest of the graph (NPU) when unset. The lm_head matmul is a single-vector x huge-
         // matrix GEMV that profiled faster on CPU/GPU than NPU in isolation; see utils.cpp.
         "GGML_OPENVINO_NPU_LM_HEAD_DEVICE",
+        // Experimental, default-off: like GGML_OPENVINO_NPU_KV_SLICE but for decode instead of
+        // prefill. Decode normally always compiles/binds attention over the full ctx_per_seq KV
+        // window regardless of how many tokens are actually live, so a single-token decode step
+        // at a long context pays the same attention cost as one at n_ctx. This compiles several
+        // decode models at increasing attention-size "buckets" instead of one at full ctx_per_seq,
+        // and picks the smallest bucket that still covers the live KV length. See
+        // get_decode_kv_slice_buckets()/ov_graph_compute_static in utils.cpp.
+        "GGML_OPENVINO_NPU_DECODE_KV_SLICE",
+        // Smallest decode bucket size (default 256). Only used when the above is enabled.
+        "GGML_OPENVINO_NPU_DECODE_KV_SLICE_FLOOR",
+        // Max number of decode buckets to compile (default 6), to bound compile time/memory.
+        "GGML_OPENVINO_NPU_DECODE_KV_SLICE_MAX_BUCKETS",
     };
 
     for (const char * const & env_var : env_var_names) {
@@ -303,6 +317,36 @@ bool ggml_openvino_npu_split_lm_head_enabled() {
 
 bool ggml_openvino_npu_skip_rebind_enabled() {
     return ggml_openvino_is_npu() && ggml_openvino_getenv_int("GGML_OPENVINO_NPU_SKIP_REBIND") != 0;
+}
+
+bool ggml_openvino_npu_decode_kv_slice_enabled() {
+    return ggml_openvino_is_npu() && ggml_openvino_getenv_int("GGML_OPENVINO_NPU_DECODE_KV_SLICE") != 0;
+}
+
+static int ggml_openvino_npu_decode_kv_slice_floor() {
+    int v = ggml_openvino_getenv_int("GGML_OPENVINO_NPU_DECODE_KV_SLICE_FLOOR");
+    return v > 0 ? v : 256;
+}
+
+static int ggml_openvino_npu_decode_kv_slice_max_buckets() {
+    int v = ggml_openvino_getenv_int("GGML_OPENVINO_NPU_DECODE_KV_SLICE_MAX_BUCKETS");
+    return v > 0 ? v : 6;
+}
+
+std::vector<int> ggml_openvino_decode_kv_slice_buckets(int ctx_per_seq) {
+    std::vector<int> buckets;
+    if (ctx_per_seq <= 0) {
+        return buckets;
+    }
+    const int floor = ggml_openvino_npu_decode_kv_slice_floor();
+    const int max_buckets = ggml_openvino_npu_decode_kv_slice_max_buckets();
+    int size = floor;
+    while (size < ctx_per_seq && (int) buckets.size() + 1 < max_buckets) {
+        buckets.push_back(size);
+        size *= 2;
+    }
+    buckets.push_back(ctx_per_seq);
+    return buckets;
 }
 
 // Get the remote context for the current device (returns empty optional for CPU)

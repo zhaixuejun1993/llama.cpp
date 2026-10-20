@@ -119,7 +119,9 @@ static std::optional<ov::Tensor> try_make_kv_sliced_tensor(std::shared_ptr<GgmlO
         return std::nullopt;
     }
     const bool static_npu_slice =
-        ggml_decoder->is_static() && ggml_decoder->m_is_prefill && ggml_openvino_npu_kv_slice_enabled();
+        ggml_decoder->is_static() &&
+        ((ggml_decoder->m_is_prefill && ggml_openvino_npu_kv_slice_enabled()) ||
+         (!ggml_decoder->m_is_prefill && ggml_openvino_npu_decode_kv_slice_enabled()));
     if ((ggml_decoder->is_static() && !static_npu_slice) || ggml_decoder->is_stateful()) {
         return std::nullopt;
     }
@@ -173,7 +175,8 @@ static std::optional<ov::Tensor> try_make_kv_sliced_tensor(std::shared_ptr<GgmlO
 }
 
 static size_t get_static_attention_size(std::shared_ptr<GgmlOvDecoder> ggml_decoder, const std::string & name) {
-    if (ggml_decoder->m_is_prefill && ggml_openvino_npu_kv_slice_enabled()) {
+    if ((ggml_decoder->m_is_prefill && ggml_openvino_npu_kv_slice_enabled()) ||
+        (!ggml_decoder->m_is_prefill && ggml_openvino_npu_decode_kv_slice_enabled())) {
         const auto params = ggml_decoder->get_compute_params();
         const bool is_swa = name.find("swa") != std::string::npos;
         const int attention_size = is_swa ? params.attention_size_swa : params.attention_size;
@@ -229,6 +232,13 @@ static std::string compiled_graph_key(const ggml_cgraph * graph, const GgmlOvDec
     append(decoder.is_stateful());
     append(prefill_chunk_size);
     append(ggml_openvino_npu_hfa_prefill_enabled());
+    // GGML_OPENVINO_NPU_DECODE_KV_SLICE (experimental, default off; also closes a latent gap for
+    // the existing prefill-only KV_SLICE): attention_size doesn't otherwise appear anywhere in
+    // this key -- the KV leaf's raw ne/nb below always reflect the full allocated ctx_per_seq, not
+    // the live/bucket size -- so two compiles that only differ by attention_size would otherwise
+    // silently hash identically and collide in the shared compiled-model cache.
+    append(decoder.get_compute_params().attention_size);
+    append(decoder.get_compute_params().attention_size_swa);
     bool has_weight_buffer_id = false;
     std::unordered_map<const ggml_tensor *, size_t> ids;
     std::function<void(const ggml_tensor *)> visit = [&](const ggml_tensor * tensor) {
@@ -1002,7 +1012,37 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
     if (m_params.n_heads_kv == -1) {
         prefill_chunk_size = inp_pos->ne[0];
     }
+
+    // GGML_OPENVINO_NPU_DECODE_KV_SLICE (experimental, default off): pick the smallest compiled
+    // decode "bucket" (attention_size) that still covers the live KV length, instead of always
+    // compiling/binding the full ctx_per_seq. c_params_decode_snapped is the decode-only view of
+    // c_params with attention_size pinned to that bucket; c_params itself is left untouched since
+    // it's also used to build the PREFILL half of a shared compile (see build branch below).
+    int decode_bucket_idx = -1;
+    int decode_bucket_size = -1;
+    ComputeParams c_params_decode_snapped = c_params;
+    if (!is_prefill && !no_kv_cache && ggml_openvino_npu_decode_kv_slice_enabled() && m_params.ctx_per_seq > 0) {
+        const auto buckets = ggml_openvino_decode_kv_slice_buckets(m_params.ctx_per_seq);
+        const int live = c_params.attention_size > 0 ? c_params.attention_size : m_params.ctx_per_seq;
+        for (size_t i = 0; i < buckets.size(); i++) {
+            if (live <= buckets[i]) {
+                decode_bucket_idx = (int) i;
+                decode_bucket_size = buckets[i];
+                break;
+            }
+        }
+        if (decode_bucket_idx < 0 && !buckets.empty()) {
+            decode_bucket_idx = (int) buckets.size() - 1;
+            decode_bucket_size = buckets.back();
+        }
+        if (decode_bucket_idx >= 0) {
+            c_params_decode_snapped.attention_size = decode_bucket_size;
+            c_params_decode_snapped.attention_size_swa = m_params.ctx_per_seq_swa;
+        }
+    }
+
     graph_key key(cgraph);
+    key.decode_bucket = decode_bucket_idx;
     static const bool cache_enabled = !ggml_openvino_getenv_int("GGML_OPENVINO_DISABLE_CACHE");
     bool cache_hit = false;
 
@@ -1075,7 +1115,12 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
         std::map<std::string, std::shared_ptr<ov::Node>> model_weights;
         ggml_decoder->m_is_prefill = is_prefill;
         ggml_decoder->set_model_params(m_params);
-        ggml_decoder->set_compute_params(c_params);
+        // GGML_OPENVINO_NPU_DECODE_KV_SLICE: this decoder's compiled shapes are frozen at
+        // decode_bucket_size, not whatever the raw live attention_size happens to be at this
+        // exact token -- re-pin to the bucket's frozen value, or get_static_attention_size()/
+        // try_make_kv_sliced_tensor() would try to bind host tensors at the wrong size and throw
+        // on the OV set_input_tensor shape check.
+        ggml_decoder->set_compute_params(is_prefill ? c_params : c_params_decode_snapped);
         if (old_m_params.kv_buffer_changed(m_params)) {
             ggml_decoder->update_io(cgraph);
         }
@@ -1122,7 +1167,8 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
         std::unique_lock<std::mutex> compile_lock(shared_cache->mutex);
         auto weight_names = get_weight_names(cgraph);
         auto local_decoder = std::make_shared<GgmlOvDecoder>(
-            cgraph, m_params, c_params, weight_names, is_static, stateful, false, is_prefill, prefill_chunk_size);
+            cgraph, m_params, is_prefill ? c_params : c_params_decode_snapped, weight_names, is_static, stateful,
+            false, is_prefill, prefill_chunk_size);
         const std::string shared_key = cache_enabled ?
             compiled_graph_key(cgraph, *local_decoder, device, prefill_chunk_size) : "";
         auto shared_it = shared_cache->graphs.find(shared_key);
@@ -1159,8 +1205,13 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
             model_source = "reused (shared compiled cache hit)";
             GGML_LOG_DEBUG("ggml-openvino: shared compiled model HIT (static)\n");
         } else {
-            auto decode_c_params = c_params;
-            if (ggml_openvino_npu_kv_slice_enabled()) {
+            // decode_c_params always describes the DECODE half of this shared pair, regardless of
+            // which phase (prefill or decode) triggered the build -- c_params_decode_snapped
+            // already carries the bucket-pinned attention_size when GGML_OPENVINO_NPU_DECODE_KV_SLICE
+            // selected one; only fall back to forcing full ctx_per_seq (today's prefill-KV_SLICE
+            // behavior) when no decode bucket applies.
+            auto decode_c_params = c_params_decode_snapped;
+            if (ggml_openvino_npu_kv_slice_enabled() && decode_bucket_idx < 0) {
                 decode_c_params.attention_size = m_params.ctx_per_seq;
                 decode_c_params.attention_size_swa = m_params.ctx_per_seq_swa;
             }
@@ -1687,14 +1738,17 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
             }
 
             ov_raw_infer_start = ggml_time_us();
+            const uint64_t chunk_pf_before = ggml_openvino_process_page_faults();
             infer_request->infer();
             const int64_t chunk_infer_us = ggml_time_us() - ov_raw_infer_start;
             ov_raw_infer_total += chunk_infer_us;
             if (ggml_openvino_getenv_int("GGML_OPENVINO_PROFILING")) {
                 fprintf(stderr,
-                        "GGML OpenVINO profiling: prefill chunk %d: valid_len=%lld, padded_len=%d, logical_history=%lld, raw infer=%.3f ms\n",
+                        "GGML OpenVINO profiling: prefill chunk %d: valid_len=%lld, padded_len=%d, logical_history=%lld, raw infer=%.3f ms, page_faults=%llu, ws=%.0f MiB\n",
                         chunk_index, static_cast<long long>(chunk_valid_len), prefill_chunk_size,
-                        static_cast<long long>(chunk_start), chunk_infer_us / 1000.0);
+                        static_cast<long long>(chunk_start), chunk_infer_us / 1000.0,
+                        static_cast<unsigned long long>(ggml_openvino_process_page_faults() - chunk_pf_before),
+                        ggml_openvino_process_ws_mib());
             }
             {
                 char probe_tag[32];

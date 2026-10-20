@@ -13,6 +13,7 @@
 #include <openvino/runtime/tensor.hpp>
 #include <optional>
 #include <string>
+#include <vector>
 
 // ExtraQuantType enum - defines requantization target formats
 // Q4_1_64: u4, group 64, *true* asymmetric (per-group scale and zero point). Note that
@@ -117,6 +118,12 @@ bool ggml_openvino_npu_hfa_prefill_enabled();
 bool ggml_openvino_npu_split_lm_head_enabled();
 bool ggml_openvino_npu_skip_rebind_enabled();
 
+// Experimental, default-off: decode-side analog of ggml_openvino_npu_kv_slice_enabled(), see
+// GGML_OPENVINO_NPU_DECODE_KV_SLICE in ggml-openvino-extra.cpp. ggml_openvino_decode_kv_slice_buckets()
+// returns the ascending bucket-size schedule for a given ctx_per_seq (e.g. [256,512,1024,...,ctx_per_seq]).
+bool ggml_openvino_npu_decode_kv_slice_enabled();
+std::vector<int> ggml_openvino_decode_kv_slice_buckets(int ctx_per_seq);
+
 // Host weight-buffer release (GGML_OPENVINO_RELEASE_WEIGHTS, GPU only).
 // register: record a host weight buffer (idempotent per data pointer).
 // release:  madvise(MADV_DONTNEED) all registered buffers, dropping their RSS.
@@ -134,6 +141,9 @@ void ggml_openvino_probe_residency(const char * tag);
 
 // Current process working set in MiB (Windows only; 0 elsewhere).
 double ggml_openvino_process_ws_mib();
+
+// Cumulative process page-fault count (Windows only; 0 elsewhere).
+uint64_t ggml_openvino_process_page_faults();
 
 // Get requantization type for a tensor type (returns nullopt if no requant needed)
 std::optional<ExtraQuantType> ggml_openvino_get_requant_type(const ggml_tensor * tensor, bool no_requant = false);

@@ -819,7 +819,13 @@ std::pair<ModelParams, ComputeParams> GgmlOvDecoder::compute_llm_params(ggml_cgr
             }
             if (is_static) {
                 const bool slice_prefill = ggml_openvino_npu_kv_slice_enabled() && compute_params.input_len > 1;
-                if (!slice_prefill) {
+                // GGML_OPENVINO_NPU_DECODE_KV_SLICE (experimental, default off): let decode's live
+                // attention_size (mask->ne[0], set just above) survive instead of being forced
+                // back to the full ctx_per_seq. ov_graph_compute_static uses this live value to
+                // pick a decode bucket; decoder_runtime_ctx::set_compute_params then re-pins it to
+                // that bucket's frozen size for cache-hit calls (see utils.cpp).
+                const bool slice_decode = ggml_openvino_npu_decode_kv_slice_enabled() && compute_params.input_len <= 1;
+                if (!slice_prefill && !slice_decode) {
                     compute_params.attention_size = model_params.ctx_per_seq;
                 }
                 compute_params.attention_size_swa = model_params.ctx_per_seq_swa;
@@ -839,7 +845,10 @@ std::pair<ModelParams, ComputeParams> GgmlOvDecoder::compute_llm_params(ggml_cgr
         if (node->op == GGML_OP_TRANSPOSE && node->src[0]->op == GGML_OP_PERMUTE &&
             node->src[0]->src[0]->op == GGML_OP_VIEW) {
             compute_params.attention_size = node->ne[0];
-            if (is_static && !(ggml_openvino_npu_kv_slice_enabled() && compute_params.input_len > 1)) {
+            const bool slice_prefill_tp = ggml_openvino_npu_kv_slice_enabled() && compute_params.input_len > 1;
+            const bool slice_decode_tp =
+                ggml_openvino_npu_decode_kv_slice_enabled() && compute_params.input_len <= 1;
+            if (is_static && !slice_prefill_tp && !slice_decode_tp) {
                 compute_params.attention_size = model_params.ctx_per_seq;
             }
         }
@@ -975,7 +984,10 @@ ov::PartialShape GgmlOvDecoder::get_graph_input_shape(const ggml_tensor * op,
         // mask
         if (m_is_static) {
             int attention_size = m_model_params.ctx;
-            if (m_is_prefill && ggml_openvino_npu_kv_slice_enabled()) {
+            const bool slice_this_mask =
+                (m_is_prefill && ggml_openvino_npu_kv_slice_enabled()) ||
+                (!m_is_prefill && ggml_openvino_npu_decode_kv_slice_enabled());
+            if (slice_this_mask) {
                 attention_size = name.find("swa") != std::string::npos ? m_compute_params.attention_size_swa :
                                                                          m_compute_params.attention_size;
             }
@@ -993,10 +1005,13 @@ ov::PartialShape GgmlOvDecoder::get_graph_input_shape(const ggml_tensor * op,
         // the token fill level is handled by token_len_per_seq + dynamic mask input.
         // skip dynamic dim and stateful reshape for this layout.
         const bool is_flat_kv = (input->ne[1] == 1 && input->ne[2] == 1 && input->ne[3] == 1);
+        const bool slice_this_kvcache =
+            (m_is_prefill && ggml_openvino_npu_kv_slice_enabled()) ||
+            (!m_is_prefill && ggml_openvino_npu_decode_kv_slice_enabled());
         if (!m_is_static && !is_flat_kv) {
             // do not fix ctx size to make llama-bench work across test params
             input_shape[2] = -1;
-        } else if (m_is_prefill && ggml_openvino_npu_kv_slice_enabled()) {
+        } else if (slice_this_kvcache) {
             const auto layer = extract_layer_from_name(name);
             if (layer.has_value() && !is_swa_layer(*layer) && m_compute_params.attention_size > 0 &&
                 m_compute_params.attention_size < input_shape[2].get_length()) {

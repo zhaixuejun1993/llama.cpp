@@ -20,6 +20,13 @@ struct graph_key {
     std::string first_node_name;
     std::string last_node_name;
     std::vector<std::string> input_src_names;
+    // GGML_OPENVINO_NPU_DECODE_KV_SLICE (experimental, default off): which decode attention-size
+    // bucket this call resolved to (see ggml_openvino_decode_kv_slice_buckets()), or -1 for
+    // prefill / when the feature is off. Set by the caller after construction, right after
+    // bucket selection. Folding this into graph_key lets every existing cache map in
+    // ov_runtime_context (keyed by graph_key) become bucket-correct automatically, with no
+    // changes to any of their lookup/store call sites.
+    int decode_bucket = -1;
 
     graph_key(const ggml_cgraph * cgraph) : n_nodes(cgraph->n_nodes) {
         if (n_nodes > 0) {
@@ -65,7 +72,8 @@ struct graph_key {
 
     bool operator==(const graph_key & other) const {
         return n_nodes == other.n_nodes && first_node_name == other.first_node_name &&
-               last_node_name == other.last_node_name && input_src_names == other.input_src_names;
+               last_node_name == other.last_node_name && input_src_names == other.input_src_names &&
+               decode_bucket == other.decode_bucket;
     }
 };
 
@@ -79,6 +87,7 @@ struct graph_key_hash {
         for (const auto & input_src_name : key.input_src_names) {
             hash ^= std::hash<std::string>{}(input_src_name) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
         }
+        hash ^= std::hash<int>{}(key.decode_bucket) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
         return hash;
     }
 };
