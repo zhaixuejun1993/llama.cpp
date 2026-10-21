@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <openvino/core/partial_shape.hpp>
+#include <openvino/runtime/tensor.hpp>
 #include <optional>
 #include <set>
 #include <string>
@@ -239,7 +240,13 @@ public:
     virtual void visit_subgraph(
         std::function<void(std::shared_ptr<GgmlDecoder>, int node_idx)> node_visitor) const override;
 
-    ggml_tensor * get_input_ggml_tensor(const std::string & name) const { return m_inputs.at(name); }
+    ggml_tensor * get_input_ggml_tensor(const std::string & name) const {
+        auto it = m_inputs.find(name);
+        if (it == m_inputs.end()) {
+            throw std::runtime_error("OpenVINO ggml input not found: " + name);
+        }
+        return it->second;
+    }
 
     virtual int get_op_case(int node_idx) const override { return m_node_info_list[node_idx].node_op_case; }
 
@@ -303,6 +310,8 @@ public:
 
     virtual bool is_stateful() const override { return m_is_stateful; }
 
+    virtual bool is_prefill() const override { return m_is_prefill; }
+
     int get_static_n_tokens() const { return m_is_prefill ? m_prefill_chunk_size : 1; }
 
     virtual bool is_splited_model() const override { return m_model_is_splitted; }
@@ -326,6 +335,8 @@ public:
     const ggml_tensor * get_tensor_used_op(const ggml_tensor * tensor) const;
 
     const ggml_tensor * get_tensor_from_name(const std::string & name) const;
+
+    std::string get_hfa_history_input_name() const;
 
     void clear_model_weights() { m_model_weights.clear(); }
 
