@@ -114,6 +114,10 @@ bool ggml_openvino_npu_fast_mask_enabled();
 bool ggml_openvino_npu_l0_host_tensors_enabled();
 bool ggml_openvino_npu_hfa_prefill_enabled();
 
+// Static NPU decode attends a KV window rounded up to base*2^k (clamped to ctx) instead of the
+// whole ctx; one decode model per window. Returns the base size, 0 = off.
+int ggml_openvino_npu_decode_bucket();
+
 // Host weight-buffer release (GGML_OPENVINO_RELEASE_WEIGHTS, GPU only).
 // register: record a host weight buffer (idempotent per data pointer).
 // release:  madvise(MADV_DONTNEED) all registered buffers, dropping their RSS.

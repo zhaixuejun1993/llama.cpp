@@ -975,7 +975,9 @@ ov::PartialShape GgmlOvDecoder::get_graph_input_shape(const ggml_tensor * op,
         // mask
         if (m_is_static) {
             int attention_size = m_model_params.ctx;
-            if (m_is_prefill && ggml_openvino_npu_kv_slice_enabled()) {
+            const bool kv_window =
+                m_is_prefill ? ggml_openvino_npu_kv_slice_enabled() : ggml_openvino_npu_decode_bucket() > 0;
+            if (kv_window) {
                 attention_size = name.find("swa") != std::string::npos ? m_compute_params.attention_size_swa :
                                                                          m_compute_params.attention_size;
             }
@@ -996,7 +998,8 @@ ov::PartialShape GgmlOvDecoder::get_graph_input_shape(const ggml_tensor * op,
         if (!m_is_static && !is_flat_kv) {
             // do not fix ctx size to make llama-bench work across test params
             input_shape[2] = -1;
-        } else if (m_is_prefill && ggml_openvino_npu_kv_slice_enabled()) {
+        } else if (m_is_static && (m_is_prefill ? ggml_openvino_npu_kv_slice_enabled() :
+                                                  ggml_openvino_npu_decode_bucket() > 0)) {
             const auto layer = extract_layer_from_name(name);
             if (layer.has_value() && !is_swa_layer(*layer) && m_compute_params.attention_size > 0 &&
                 m_compute_params.attention_size < input_shape[2].get_length()) {
