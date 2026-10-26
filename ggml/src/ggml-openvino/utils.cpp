@@ -86,6 +86,12 @@ enum ggml_status ov_graph_compute(ggml_cgraph * cgraph, ggml_backend_t backend) 
 //     n_kv rows no longer contain the live prefix
 // On any unmet pre-condition returns std::nullopt; the caller falls back to
 // the full-size tensor.
+// The KV address the NPU binds: on-demand L0 storage (GGML_OPENVINO_NPU_KV_ON_DEMAND) or the ggml memory itself.
+static void * kv_bind_ptr(void * data, const ov::element::Type & type, const ov::Shape & shape) {
+    void * storage = ggml_openvino_kv_storage(data, ov::shape_size(shape) * type.size());
+    return storage ? storage : data;
+}
+
 static std::optional<ov::Tensor> try_make_kv_sliced_tensor(std::shared_ptr<GgmlOvDecoder> ggml_decoder,
                                                            const std::string & name,
                                                            const ggml_tensor * ggml_tensor) {
@@ -145,7 +151,8 @@ static std::optional<ov::Tensor> try_make_kv_sliced_tensor(std::shared_ptr<GgmlO
     //     return gpu_context.create_tensor(ggml_decoder->get_ov_type(ggml_tensor), sliced_shape, ggml_tensor->data);
     // }
 
-    return ov::Tensor(ggml_decoder->get_ov_type(ggml_tensor), sliced_shape, ggml_tensor->data);
+    return ov::Tensor(ggml_decoder->get_ov_type(ggml_tensor), sliced_shape,
+                      kv_bind_ptr(ggml_tensor->data, ggml_decoder->get_ov_type(ggml_tensor), sliced_shape));
 }
 
 static size_t get_static_attention_size(std::shared_ptr<GgmlOvDecoder> ggml_decoder, const std::string & name) {
@@ -296,6 +303,7 @@ ov::Tensor create_ov_output_tensor(std::shared_ptr<GgmlOvDecoder> ggml_decoder,
     void * output_data = ggml_tensor->data;
     if (ggml_decoder->is_static()) {
         output_shape = infer_request->get_output_tensor(output_index).get_shape();
+        output_data = kv_bind_ptr(output_data, output_type, output_shape);
     } else {
         // For a CPY into a padded view_src (e.g. a padded KV cache buffer), the
         // OV ScatterUpdate node outputs the full view_src shape, not the CPY node's
@@ -1521,6 +1529,19 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
         return request;
     };
 
+    // On-demand KV: grow the storage to this call's KV window before binding, so every view of the call
+    // (KV inputs, HFA past, KV outputs) addresses the same storage.
+    bool kv_grew = false;
+    size_t kv_rows = 0;
+    if (ggml_openvino_npu_kv_on_demand_enabled()) {
+        for (const auto & name : ov_input_names_local) {
+            if (name.rfind("cache_k_l", 0) == 0 || name.rfind("cache_v_l", 0) == 0) {
+                kv_rows = get_static_attention_size(ggml_decoder, name);
+                kv_grew |= ggml_openvino_kv_storage_reserve(ggml_decoder->get_input_ggml_tensor(name)->data, kv_rows);
+            }
+        }
+    }
+
     if (is_prefill) {
         auto inp_len = get_inp_pos_n_tokens(cgraph, inp_pos);
         for (int chunk_index = 0; chunk_index * prefill_chunk_size < inp_len; chunk_index++) {
@@ -1605,6 +1626,32 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
                 const auto output_tensor = infer_request->get_output_tensor(i);
                 print_output_tensor_info(ov_output_names_local[i], output_tensor, output_tensor.data());
             }
+        }
+    }
+
+    if (kv_grew) {
+        GGML_LOG_INFO("ggml-openvino: on-demand KV storage moved to cover a %zu-row window\n", kv_rows);
+    }
+    if (kv_grew && cache_enabled && !entry->shared_key.empty()) {
+        // Idle requests still bound to the previous KV storage keep it (and their own buffers) alive: drop the
+        // other window requests and recreate the pair's idle requests.
+        for (auto it = entry->decode_window_requests.begin(); it != entry->decode_window_requests.end();) {
+            it = it->second == infer_request ? std::next(it) : entry->decode_window_requests.erase(it);
+        }
+        auto shared_cache = r_ctx->compiled_cache;
+        std::lock_guard<std::mutex> compile_lock(shared_cache->mutex);
+        auto graph_it = shared_cache->graphs.find(entry->shared_key);
+        if (graph_it != shared_cache->graphs.end()) {
+            std::lock_guard<std::mutex> map_lock(r_ctx->ctx_mutex);
+            auto renew = [&](auto & cache, ov::CompiledModel & compiled) {
+                auto it = cache.find(key);
+                if (it != cache.end() && it->second != infer_request) {
+                    it->second.reset();
+                    it->second = std::make_shared<ov::InferRequest>(compiled.create_infer_request());
+                }
+            };
+            renew(r_ctx->infer_request_cache_prefill, graph_it->second.prefill);
+            renew(r_ctx->infer_request_cache, graph_it->second.decode);
         }
     }
 
@@ -1856,6 +1903,14 @@ ov::Tensor convert_ggml_input_to_ov(std::shared_ptr<GgmlOvDecoder> ggml_decoder,
         return *sliced;
     }
 
+    if (ggml_decoder->is_static() && GgmlOvDecoder::is_kvcache(ggml_tensor, ggml_decoder->get_tensor_used_op(ggml_tensor))) {
+        const auto type = ggml_decoder->get_ov_type(ggml_tensor);
+        const auto shape = ggml_decoder->get_shape(ggml_tensor);
+        if (void * storage = ggml_openvino_kv_storage(ggml_tensor->data, ov::shape_size(shape) * type.size())) {
+            return ov::Tensor(type, shape, storage);
+        }
+    }
+
     if (ggml_tensor->extra != nullptr && !ggml_decoder->is_splited_model()) {
         auto * extra_base = static_cast<ggml_openvino_extra_base *>(ggml_tensor->extra);
         if (extra_base->type == ggml_openvino_extra_base::Type::TENSOR) {
@@ -1976,7 +2031,7 @@ ov::Tensor get_ov_input_tensor_static_prefill(std::shared_ptr<GgmlOvDecoder> ggm
         }
         if (past_capacity <= static_cast<size_t>(kv_tensor->ne[1])) {
             // Zero-copy: the first past_capacity cache rows; HFA only reads the rows of the explicit history.
-            return ov::Tensor(info.type, info.shape, kv_tensor->data);
+            return ov::Tensor(info.type, info.shape, kv_bind_ptr(kv_tensor->data, info.type, info.shape));
         }
         // Single-chunk prompt in a cache shorter than one chunk: history is empty, share one zero tensor.
         static std::mutex zeros_mutex;

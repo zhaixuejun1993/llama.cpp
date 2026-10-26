@@ -118,6 +118,18 @@ bool ggml_openvino_npu_hfa_prefill_enabled();
 // whole ctx; one decode model per window. Returns the base size, 0 = off.
 int ggml_openvino_npu_decode_bucket();
 
+// On-demand NPU KV cache (GGML_OPENVINO_NPU_KV_ON_DEMAND): the ggml KV buffer stays non-resident and the
+// NPU binds per-tensor L0 storage that grows (base*2^k rows, base = decode bucket or 1024) with the rows in use.
+bool ggml_openvino_npu_kv_on_demand_enabled();
+void ggml_openvino_kv_storage_register(void * data, size_t row_bytes, size_t rows);
+void ggml_openvino_kv_storage_unregister(const void * base, size_t size);
+// Storage address backing ggml address `ptr` with at least `bytes` valid (grown if needed);
+// nullptr if `ptr` is not inside an on-demand KV tensor.
+void * ggml_openvino_kv_storage(const void * ptr, size_t bytes);
+// Grows the storage of the on-demand KV tensor at `data` to at least `rows` rows; true if existing storage moved.
+bool ggml_openvino_kv_storage_reserve(const void * data, size_t rows);
+void ggml_openvino_kv_storage_clear(const void * base, size_t size, uint8_t value);
+
 // Host weight-buffer release (GGML_OPENVINO_RELEASE_WEIGHTS, GPU only).
 // register: record a host weight buffer (idempotent per data pointer).
 // release:  madvise(MADV_DONTNEED) all registered buffers, dropping their RSS.
