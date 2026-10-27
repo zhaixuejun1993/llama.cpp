@@ -92,6 +92,20 @@ static void * kv_bind_ptr(void * data, const ov::element::Type & type, const ov:
     return storage ? storage : data;
 }
 
+// Largest on-demand KV storage capacity (rows) among the graph's KV cache tensors.
+static int kv_storage_rows(const ggml_cgraph * cgraph) {
+    size_t rows = 0;
+    for (int i = 0; i < cgraph->n_nodes; i++) {
+        for (const auto * src : cgraph->nodes[i]->src) {
+            const auto * base = src && src->view_src ? src->view_src : src;
+            if (base && (strncmp(base->name, "cache_k_l", 9) == 0 || strncmp(base->name, "cache_v_l", 9) == 0)) {
+                rows = std::max(rows, ggml_openvino_kv_storage_capacity(base->data));
+            }
+        }
+    }
+    return static_cast<int>(rows);
+}
+
 static std::optional<ov::Tensor> try_make_kv_sliced_tensor(std::shared_ptr<GgmlOvDecoder> ggml_decoder,
                                                            const std::string & name,
                                                            const ggml_tensor * ggml_tensor) {
@@ -131,6 +145,14 @@ static std::optional<ov::Tensor> try_make_kv_sliced_tensor(std::shared_ptr<GgmlO
     }
     const int ctx_per_seq = ggml_decoder->get_ctx_per_seq();
     const int n_kv = compute_params.attention_size;
+    if (ggml_decoder->is_static() && ggml_openvino_npu_kv_head_major_enabled() && ctx_per_seq > 0) {
+        // The static graphs take the whole head-major storage, whose capacity is the attention window.
+        const auto type = ggml_decoder->get_ov_type(ggml_tensor);
+        const size_t heads = ggml_decoder->get_n_heads_kv_for_tensor(ggml_tensor);
+        const size_t rows = n_kv > 0 ? std::min(n_kv, ctx_per_seq) : ctx_per_seq;
+        const ov::Shape shape{1, heads, rows, static_cast<size_t>(ggml_tensor->ne[0]) / heads};
+        return ov::Tensor(type, shape, kv_bind_ptr(ggml_tensor->data, type, shape));
+    }
     if (ctx_per_seq <= 0 || n_kv <= 0 || n_kv >= ctx_per_seq) {
         return std::nullopt;
     }
@@ -1087,6 +1109,11 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
             decode_window *= 2;
         }
         decode_window = std::min(decode_window, m_params.ctx_per_seq);
+        if (ggml_openvino_npu_kv_head_major_enabled()) {
+            // Head-major KV is bound whole, so prefill and decode both use the window of the storage capacity.
+            decode_window = std::min(std::max(decode_window, kv_storage_rows(cgraph)), m_params.ctx_per_seq);
+            c_params.attention_size = decode_window;
+        }
         if (!is_prefill) {
             c_params.attention_size = decode_window;
         }
@@ -1257,6 +1284,7 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
                 base_extra = base_extra * 131 + static_cast<uint64_t>(ggml_openvino_getenv_int("GGML_OPENVINO_TOKEN_EMBD_I4"));
                 base_extra = base_extra * 131 + static_cast<uint64_t>(ggml_openvino_getenv_int("GGML_OPENVINO_NPU_KEEP_Q4_0"));
                 base_extra = base_extra * 131 + static_cast<uint64_t>(ggml_openvino_getenv_int("GGML_OPENVINO_NPU_KV_SLICE"));
+                base_extra = base_extra * 131 + (ggml_openvino_npu_kv_head_major_enabled() ? 1u : 0u);
                 base_extra = ggml_openvino_model_cache_mix_string(
                     base_extra, ggml_openvino_getenv_str("GGML_OPENVINO_NPU_CONFIG"));
                 base_extra = ggml_openvino_model_cache_mix_string(
@@ -1536,8 +1564,11 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
     if (ggml_openvino_npu_kv_on_demand_enabled()) {
         for (const auto & name : ov_input_names_local) {
             if (name.rfind("cache_k_l", 0) == 0 || name.rfind("cache_v_l", 0) == 0) {
+                const auto * kv_tensor = ggml_decoder->get_input_ggml_tensor(name);
+                const size_t heads =
+                    ggml_openvino_npu_kv_head_major_enabled() ? ggml_decoder->get_n_heads_kv_for_tensor(kv_tensor) : 0;
                 kv_rows = get_static_attention_size(ggml_decoder, name);
-                kv_grew |= ggml_openvino_kv_storage_reserve(ggml_decoder->get_input_ggml_tensor(name)->data, kv_rows);
+                kv_grew |= ggml_openvino_kv_storage_reserve(kv_tensor->data, kv_rows, heads);
             }
         }
     }
@@ -2024,9 +2055,12 @@ ov::Tensor get_ov_input_tensor_static_prefill(std::shared_ptr<GgmlOvDecoder> ggm
         const std::string kv_name = param_name.substr(strlen("ggml_hfa_past_"));
         const auto * kv_tensor = ggml_decoder->get_input_ggml_tensor(kv_name);
         const auto & info = ggml_decoder->get_model_extra_inputs().at(param_name);
-        const size_t past_capacity = info.shape[1];
-        const size_t row_bytes = info.shape[2] * info.shape[3] * ggml_type_size(kv_tensor->type);
-        if (static_cast<size_t>(kv_tensor->ne[0]) != info.shape[2] * info.shape[3] || kv_tensor->nb[1] != row_bytes) {
+        // Shape is [1, past, heads, head_size], or [1, heads, past, head_size] for head-major KV.
+        const bool head_major = ggml_openvino_npu_kv_head_major_enabled();
+        const size_t past_capacity = head_major ? info.shape[2] : info.shape[1];
+        const size_t heads = head_major ? info.shape[1] : info.shape[2];
+        const size_t row_bytes = heads * info.shape[3] * ggml_type_size(kv_tensor->type);
+        if (static_cast<size_t>(kv_tensor->ne[0]) != heads * info.shape[3] || kv_tensor->nb[1] != row_bytes) {
             throw std::runtime_error("HFA past KV source shape is incompatible with " + param_name);
         }
         if (past_capacity <= static_cast<size_t>(kv_tensor->ne[1])) {

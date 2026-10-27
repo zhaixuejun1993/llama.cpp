@@ -1,6 +1,7 @@
 #include "../node_context.h"
 #include "../op_table.h"
 #include "../utils.h"
+#include "ggml-openvino/ggml-openvino-extra.h"
 
 #include <climits>
 #include <cstdint>
@@ -120,6 +121,15 @@ OutputVector translate_permute(const NodeContext & context) {
         // 4. permute (skip for `-fa off`)
         auto zero = ov::op::v0::Constant::create(ov::element::i64, {1}, {0});
         auto one = ov::op::v0::Constant::create(ov::element::i64, {1}, {1});
+
+        if ((op_case == 3 || op_case == 4) && context.is_static() && ggml_openvino_npu_kv_head_major_enabled() &&
+            cache_shape.rank().get_length() == 4 && cache_shape[1].is_static() && cache_shape[1].get_length() == n_heads &&
+            n_heads > 1) {
+            // Head-major cache [1, heads, rows, head_size] is already in attention layout: only cut the window.
+            auto two = ov::op::v0::Constant::create(ov::element::i64, {1}, {2});
+            res = std::make_shared<ov::op::v8::Slice>(src, zero, attention_size, one, two);
+            return rename_outputs_with_suffix({res}, context.get_name());
+        }
 
         if (op_case == 3 || op_case == 4) {
             auto src_reshaped = std::make_shared<ov::op::v1::Reshape>(

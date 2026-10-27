@@ -274,14 +274,20 @@ OutputVector translate_flash_attn_ext(const NodeContext & context) {
         auto present_v_updates = find_scatter_updates(v_cache);
         OPENVINO_ASSERT(present_k_updates.has_value() && present_v_updates.has_value(),
                         "HFA prefill requires ScatterUpdate-backed K/V cache inputs");
-        auto present_k = reshape_present_kv(*present_k_updates, num_heads_kv, head_size);
-        auto present_v = reshape_present_kv(*present_v_updates, num_heads_kv, head_size);
-        // Past K/V come in ggml cache layout [1, past, heads, head_size]; NPUW HFA reads tiles from it directly.
-        auto to_bhsd = ov::op::v0::Constant::create(ov::element::i64, {4}, {0, 2, 1, 3});
-        k = std::make_shared<ov::op::v0::Concat>(
-            ov::OutputVector{std::make_shared<ov::op::v1::Transpose>(past_k, to_bhsd), present_k}, 2);
-        v = std::make_shared<ov::op::v0::Concat>(
-            ov::OutputVector{std::make_shared<ov::op::v1::Transpose>(past_v, to_bhsd), present_v}, 2);
+        if (ggml_openvino_npu_kv_head_major_enabled()) {
+            // Head-major cache: past and the new rows are already [1, heads, rows, head_size].
+            k = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{past_k, *present_k_updates}, 2);
+            v = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{past_v, *present_v_updates}, 2);
+        } else {
+            auto present_k = reshape_present_kv(*present_k_updates, num_heads_kv, head_size);
+            auto present_v = reshape_present_kv(*present_v_updates, num_heads_kv, head_size);
+            // Past K/V come in ggml cache layout [1, past, heads, head_size]; NPUW HFA reads tiles from it directly.
+            auto to_bhsd = ov::op::v0::Constant::create(ov::element::i64, {4}, {0, 2, 1, 3});
+            k = std::make_shared<ov::op::v0::Concat>(
+                ov::OutputVector{std::make_shared<ov::op::v1::Transpose>(past_k, to_bhsd), present_k}, 2);
+            v = std::make_shared<ov::op::v0::Concat>(
+                ov::OutputVector{std::make_shared<ov::op::v1::Transpose>(past_v, to_bhsd), present_v}, 2);
+        }
         k = tile_kv(num_heads, num_heads_kv, head_size, k);
         v = tile_kv(num_heads, num_heads_kv, head_size, v);
 

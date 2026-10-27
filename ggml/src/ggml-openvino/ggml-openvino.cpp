@@ -447,8 +447,10 @@ static void ggml_backend_openvino_buffer_memset_tensor(ggml_backend_buffer_t buf
             GGML_LOG_ERROR("%s: no OpenCL queue or clEnqueueMemFillINTEL not available for GPU buffer\n", __func__);
         }
     } else {
-        void * kv = ctx->kv_on_demand ? ggml_openvino_kv_storage((char *) tensor->data + offset, size) : nullptr;
-        memset(kv ? kv : (char *) tensor->data + offset, value, size);
+        if (!ctx->kv_on_demand ||
+            !ggml_openvino_kv_storage_copy((char *) tensor->data + offset, &value, size, GGML_OPENVINO_KV_FILL)) {
+            memset((char *) tensor->data + offset, value, size);
+        }
     }
 }
 
@@ -547,9 +549,10 @@ static void ggml_backend_openvino_buffer_set_tensor(ggml_backend_buffer_t buffer
             } else {
                 GGML_LOG_ERROR("%s: no OpenCL queue or clEnqueueMemcpyINTEL not available for GPU buffer\n", __func__);
             }
-        } else {
-            void * kv = ctx->kv_on_demand ? ggml_openvino_kv_storage((char *) tensor->data + offset, size) : nullptr;
-            memcpy(kv ? kv : (char *) tensor->data + offset, data, size);
+        } else if (!ctx->kv_on_demand || !ggml_openvino_kv_storage_copy((char *) tensor->data + offset,
+                                                                        const_cast<void *>(data), size,
+                                                                        GGML_OPENVINO_KV_WRITE)) {
+            memcpy((char *) tensor->data + offset, data, size);
         }
 
         ggml_openvino_tensor_extra * extra = ggml_openvino_create_tensor_extra(tensor, ctx->is_remote);
@@ -589,9 +592,9 @@ static void ggml_backend_openvino_buffer_get_tensor(ggml_backend_buffer_t buffer
         } else {
             GGML_LOG_ERROR("%s: no OpenCL queue or clEnqueueMemcpyINTEL not available for GPU buffer\n", __func__);
         }
-    } else {
-        const void * kv = ctx->kv_on_demand ? ggml_openvino_kv_storage((const char *) tensor->data + offset, size) : nullptr;
-        memcpy(data, kv ? kv : (const char *) tensor->data + offset, size);
+    } else if (!ctx->kv_on_demand ||
+               !ggml_openvino_kv_storage_copy((const char *) tensor->data + offset, data, size, GGML_OPENVINO_KV_READ)) {
+        memcpy(data, (const char *) tensor->data + offset, size);
     }
 }
 
@@ -638,9 +641,16 @@ static bool ggml_backend_openvino_buffer_cpy_tensor(ggml_backend_buffer_t buffer
     // Host buffer - can copy from any host buffer
     if (ggml_backend_buffer_is_host(src->buffer)) {
         const size_t n = ggml_nbytes(src);
-        const void * src_kv = ggml_openvino_kv_storage(src->data, n);
-        void * dst_kv = ggml_openvino_kv_storage(dst->data, n);
-        memcpy(dst_kv ? dst_kv : dst->data, src_kv ? src_kv : src->data, n);
+        std::vector<uint8_t> staged;
+        const void * from = src->data;
+        if (ggml_openvino_kv_storage_copy(src->data, nullptr, 0, GGML_OPENVINO_KV_READ)) {
+            staged.resize(n);
+            ggml_openvino_kv_storage_copy(src->data, staged.data(), n, GGML_OPENVINO_KV_READ);
+            from = staged.data();
+        }
+        if (!ggml_openvino_kv_storage_copy(dst->data, const_cast<void *>(from), n, GGML_OPENVINO_KV_WRITE)) {
+            memcpy(dst->data, from, n);
+        }
         return true;
     }
     return false;

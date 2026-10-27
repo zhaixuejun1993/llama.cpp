@@ -80,6 +80,7 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_NPU_KV_SLICE",
         "GGML_OPENVINO_NPU_HFA_PREFILL",
         "GGML_OPENVINO_NPU_KV_ON_DEMAND",
+        "GGML_OPENVINO_NPU_KV_HEAD_MAJOR",
         "GGML_OPENVINO_SELF_CONTAINED_BLOB",
         "GGML_OPENVINO_SELF_CONTAINED_MMAP",
         "GGML_OPENVINO_NPU_SHARED_BANK",
@@ -299,11 +300,18 @@ bool ggml_openvino_npu_kv_on_demand_enabled() {
     return ggml_openvino_is_npu() && ggml_openvino_getenv_int("GGML_OPENVINO_NPU_KV_ON_DEMAND") != 0;
 }
 
+bool ggml_openvino_npu_kv_head_major_enabled() {
+    return ggml_openvino_npu_kv_on_demand_enabled() && ggml_openvino_npu_decode_bucket() > 0 &&
+           ggml_openvino_npu_kv_slice_enabled() && ggml_openvino_getenv_int("GGML_OPENVINO_NPU_KV_HEAD_MAJOR") != 0;
+}
+
 namespace {
 struct kv_storage_entry {
     size_t row_bytes = 0;
     size_t max_rows = 0;
     size_t cap_rows = 0;
+    // 0: ggml row layout [rows][heads * head_size]; >0: head-major [heads][cap_rows][head_size].
+    size_t heads = 0;
     ov::Tensor storage;
 };
 
@@ -331,7 +339,25 @@ kv_storage_entry * kv_find_locked(kv_storage_registry & reg, uintptr_t addr, uin
     return &it->second;
 }
 
-bool kv_grow_locked(kv_storage_entry & e, size_t rows) {
+// Storage offset of byte `off` of the ggml tensor; its row must be below cap_rows.
+size_t kv_storage_offset(const kv_storage_entry & e, size_t off) {
+    if (e.heads == 0) {
+        return off;
+    }
+    const size_t head_bytes = e.row_bytes / e.heads;
+    const size_t row = off / e.row_bytes;
+    const size_t in_row = off % e.row_bytes;
+    return ((in_row / head_bytes) * e.cap_rows + row) * head_bytes + in_row % head_bytes;
+}
+
+bool kv_grow_locked(kv_storage_entry & e, size_t rows, size_t heads) {
+    if (heads > 0 && e.heads != heads) {
+        if (e.cap_rows > 0) {
+            throw std::runtime_error("ggml-openvino: on-demand KV storage layout changed");
+        }
+        GGML_ASSERT(e.row_bytes % heads == 0);
+        e.heads = heads;
+    }
     rows = std::min(rows, e.max_rows);
     if (rows <= e.cap_rows) {
         return false;
@@ -350,12 +376,19 @@ bool kv_grow_locked(kv_storage_entry & e, size_t rows) {
         grown = ov::Tensor(ov::element::u8, ov::Shape{bytes});
     }
     auto * dst = static_cast<uint8_t *>(grown.data());
-    const size_t kept = e.cap_rows * e.row_bytes;
-    if (kept > 0) {
-        std::memcpy(dst, e.storage.data(), kept);
-    }
     // Rows past the history are masked out, but must stay finite (0 * NaN is NaN).
-    std::memset(dst + kept, 0, bytes - kept);
+    std::memset(dst, 0, bytes);
+    if (e.cap_rows > 0) {
+        const auto * src = static_cast<const uint8_t *>(e.storage.data());
+        if (e.heads == 0) {
+            std::memcpy(dst, src, e.cap_rows * e.row_bytes);
+        } else {
+            const size_t head_bytes = e.row_bytes / e.heads;
+            for (size_t h = 0; h < e.heads; ++h) {
+                std::memcpy(dst + h * cap * head_bytes, src + h * e.cap_rows * head_bytes, e.cap_rows * head_bytes);
+            }
+        }
+    }
     // Requests still bound to the old storage keep it alive until they are rebound or released.
     e.storage = grown;
     e.cap_rows = cap;
@@ -392,7 +425,10 @@ void * ggml_openvino_kv_storage(const void * ptr, size_t bytes) {
         return nullptr;
     }
     const size_t offset = addr - base;
-    if (kv_grow_locked(*e, (offset + bytes + e->row_bytes - 1) / e->row_bytes)) {
+    if (e->heads > 0 && offset != 0) {
+        throw std::runtime_error("ggml-openvino: head-major KV storage is only bound from the tensor start");
+    }
+    if (kv_grow_locked(*e, (offset + bytes + e->row_bytes - 1) / e->row_bytes, 0)) {
         GGML_LOG_WARN("%s: KV storage grown during binding to %zu rows\n", __func__, e->cap_rows);
     }
     if (offset + bytes > e->cap_rows * e->row_bytes) {
@@ -401,7 +437,7 @@ void * ggml_openvino_kv_storage(const void * ptr, size_t bytes) {
     return static_cast<uint8_t *>(e->storage.data()) + offset;
 }
 
-bool ggml_openvino_kv_storage_reserve(const void * data, size_t rows) {
+bool ggml_openvino_kv_storage_reserve(const void * data, size_t rows, size_t heads) {
     auto & reg = kv_registry();
     std::lock_guard<std::mutex> lock(reg.mutex);
     auto it = reg.entries.find(reinterpret_cast<uintptr_t>(data));
@@ -409,7 +445,53 @@ bool ggml_openvino_kv_storage_reserve(const void * data, size_t rows) {
         return false;
     }
     const bool had_storage = it->second.cap_rows > 0;
-    return kv_grow_locked(it->second, rows) && had_storage;
+    return kv_grow_locked(it->second, rows, heads) && had_storage;
+}
+
+size_t ggml_openvino_kv_storage_capacity(const void * data) {
+    auto & reg = kv_registry();
+    std::lock_guard<std::mutex> lock(reg.mutex);
+    auto it = reg.entries.find(reinterpret_cast<uintptr_t>(data));
+    return it == reg.entries.end() ? 0 : it->second.cap_rows;
+}
+
+bool ggml_openvino_kv_storage_copy(const void * ptr, void * host, size_t size, ggml_openvino_kv_copy_op op) {
+    auto & reg = kv_registry();
+    std::lock_guard<std::mutex> lock(reg.mutex);
+    if (reg.entries.empty()) {
+        return false;
+    }
+    uintptr_t base = 0;
+    auto * e = kv_find_locked(reg, reinterpret_cast<uintptr_t>(ptr), base);
+    if (e == nullptr) {
+        return false;
+    }
+    const size_t begin = reinterpret_cast<uintptr_t>(ptr) - base;
+    if (op != GGML_OPENVINO_KV_READ) {
+        kv_grow_locked(*e, (begin + size + e->row_bytes - 1) / e->row_bytes, 0);
+    }
+    auto * storage = static_cast<uint8_t *>(e->storage.data());
+    auto * h = static_cast<uint8_t *>(host);
+    const size_t head_bytes = e->heads > 0 ? e->row_bytes / e->heads : e->row_bytes;
+    for (size_t done = 0; done < size;) {
+        const size_t off = begin + done;
+        const size_t n = std::min(size - done, head_bytes - off % head_bytes);
+        const bool stored = off / e->row_bytes < e->cap_rows;
+        uint8_t * s = stored ? storage + kv_storage_offset(*e, off) : nullptr;
+        if (op == GGML_OPENVINO_KV_READ) {
+            if (s) {
+                std::memcpy(h + done, s, n);
+            } else {
+                std::memset(h + done, 0, n);
+            }
+        } else if (op == GGML_OPENVINO_KV_WRITE) {
+            std::memcpy(s, h + done, n);
+        } else {
+            std::memset(s, *h, n);
+        }
+        done += n;
+    }
+    return true;
 }
 
 void ggml_openvino_kv_storage_clear(const void * base, size_t size, uint8_t value) {

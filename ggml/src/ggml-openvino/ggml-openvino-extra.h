@@ -121,13 +121,23 @@ int ggml_openvino_npu_decode_bucket();
 // On-demand NPU KV cache (GGML_OPENVINO_NPU_KV_ON_DEMAND): the ggml KV buffer stays non-resident and the
 // NPU binds per-tensor L0 storage that grows (base*2^k rows, base = decode bucket or 1024) with the rows in use.
 bool ggml_openvino_npu_kv_on_demand_enabled();
+// Head-major on-demand KV (GGML_OPENVINO_NPU_KV_HEAD_MAJOR, needs KV_ON_DEMAND + DECODE_BUCKET + KV_SLICE): storage is
+// [heads][rows][head_size] and every static graph binds the whole storage as [1, heads, rows, head_size], so attention
+// reads the cache without transposing it.
+bool ggml_openvino_npu_kv_head_major_enabled();
 void ggml_openvino_kv_storage_register(void * data, size_t row_bytes, size_t rows);
 void ggml_openvino_kv_storage_unregister(const void * base, size_t size);
 // Storage address backing ggml address `ptr` with at least `bytes` valid (grown if needed);
 // nullptr if `ptr` is not inside an on-demand KV tensor.
 void * ggml_openvino_kv_storage(const void * ptr, size_t bytes);
-// Grows the storage of the on-demand KV tensor at `data` to at least `rows` rows; true if existing storage moved.
-bool ggml_openvino_kv_storage_reserve(const void * data, size_t rows);
+// Grows the storage of the on-demand KV tensor at `data` to at least `rows` rows (head-major when heads > 0);
+// true if existing storage moved.
+bool ggml_openvino_kv_storage_reserve(const void * data, size_t rows, size_t heads = 0);
+// Rows currently backed by storage for the on-demand KV tensor at `data` (0 if none).
+size_t ggml_openvino_kv_storage_capacity(const void * data);
+enum ggml_openvino_kv_copy_op { GGML_OPENVINO_KV_READ, GGML_OPENVINO_KV_WRITE, GGML_OPENVINO_KV_FILL };
+// Host access by ggml address in the ggml row layout (FILL uses *host as the byte value); false if not on-demand KV.
+bool ggml_openvino_kv_storage_copy(const void * ptr, void * host, size_t size, ggml_openvino_kv_copy_op op);
 void ggml_openvino_kv_storage_clear(const void * base, size_t size, uint8_t value);
 
 // Host weight-buffer release (GGML_OPENVINO_RELEASE_WEIGHTS, GPU only).
