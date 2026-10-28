@@ -125,6 +125,9 @@ bool ggml_openvino_npu_kv_on_demand_enabled();
 // [heads][rows][head_size] and every static graph binds the whole storage as [1, heads, rows, head_size], so attention
 // reads the cache without transposing it.
 bool ggml_openvino_npu_kv_head_major_enabled();
+// On top of head-major KV (GGML_OPENVINO_NPU_KV_V_TRANSPOSED): V is stored and bound as [1, heads, head_size, rows]
+// (the per-channel layout is head-major storage with heads * head_size channels) and attention uses V^T.
+bool ggml_openvino_npu_kv_v_transposed_enabled();
 void ggml_openvino_kv_storage_register(void * data, size_t row_bytes, size_t rows);
 void ggml_openvino_kv_storage_unregister(const void * base, size_t size);
 // Storage address backing ggml address `ptr` with at least `bytes` valid (grown if needed);
@@ -138,6 +141,11 @@ size_t ggml_openvino_kv_storage_capacity(const void * data);
 enum ggml_openvino_kv_copy_op { GGML_OPENVINO_KV_READ, GGML_OPENVINO_KV_WRITE, GGML_OPENVINO_KV_FILL };
 // Host access by ggml address in the ggml row layout (FILL uses *host as the byte value); false if not on-demand KV.
 bool ggml_openvino_kv_storage_copy(const void * ptr, void * host, size_t size, ggml_openvino_kv_copy_op op);
+// Writes rows [dst_row, dst_row + n) of head-major storage of the KV tensor at `data` from `src`, laid out as
+// [heads][src_stride] entries of (row_bytes / heads) bytes, starting at entry src_col of every head.
+// False if `data` is not head-major on-demand KV.
+bool ggml_openvino_kv_storage_write_rows(const void * data, const void * src, size_t src_stride, size_t src_col,
+                                         size_t dst_row, size_t n);
 void ggml_openvino_kv_storage_clear(const void * base, size_t size, uint8_t value);
 
 // Host weight-buffer release (GGML_OPENVINO_RELEASE_WEIGHTS, GPU only).

@@ -62,15 +62,28 @@ OutputVector translate_set_rows(const NodeContext & context) {
         if (cache_shape.rank().is_static() && cache_shape.rank().get_length() == 4 && cache_shape[1].is_static() &&
             cache_shape[3].is_static() && cache_shape[1].get_length() > 1) {
             const int64_t heads = cache_shape[1].get_length();
-            const int64_t head_size = cache_shape[3].get_length();
+            // Transposed V cache is [1, heads, head_size, rows]: rows go along axis 3.
+            const bool v_transposed = ggml_openvino_npu_kv_v_transposed_enabled() &&
+                                      cache.get_node()->get_friendly_name().rfind("cache_v_l", 0) == 0;
+            const int64_t head_size = (v_transposed ? cache_shape[2] : cache_shape[3]).get_length();
             auto ind_squeezed = std::make_shared<ov::op::v0::Squeeze>(
                 indices, ov::op::v0::Constant::create(ov::element::i64, {3}, {0, 1, 2}));
             auto rows = std::make_shared<ov::op::v1::Reshape>(
                 data, ov::op::v0::Constant::create(ov::element::i64, {4}, {(int64_t) 1, (int64_t) -1, heads, head_size}),
                 false);
             auto rows_bhsd = std::make_shared<ov::op::v1::Transpose>(
-                rows, ov::op::v0::Constant::create(ov::element::i64, {4}, {0, 2, 1, 3}));
-            Output<Node> res = std::make_shared<ov::op::v3::ScatterUpdate>(cache, ind_squeezed, rows_bhsd, axes);
+                rows, ov::op::v0::Constant::create(ov::element::i64, {4},
+                                                   v_transposed ? std::vector<int64_t>{0, 2, 3, 1} :
+                                                                  std::vector<int64_t>{0, 2, 1, 3}));
+            if (v_transposed && context.is_prefill() && ggml_openvino_npu_hfa_prefill_enabled()) {
+                // On NPU a chunk-sized scatter along the innermost axis of [1, heads, head_size, rows] is very slow:
+                // the HFA prefill outputs the chunk's V^T rows [1, heads, head_size, n] instead and the host copies
+                // them into the cache (as GenAI does for its prefill KV).
+                return rename_outputs_with_suffix({rows_bhsd}, context.get_name());
+            }
+            Output<Node> res = std::make_shared<ov::op::v3::ScatterUpdate>(
+                cache, ind_squeezed, rows_bhsd,
+                v_transposed ? ov::op::v0::Constant::create(ov::element::i64, ov::Shape{}, {3}) : axes);
             return rename_outputs_with_suffix({res}, context.get_name());
         }
     }

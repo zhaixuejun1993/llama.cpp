@@ -1009,7 +1009,10 @@ ov::PartialShape GgmlOvDecoder::get_graph_input_shape(const ggml_tensor * op,
             if (layer.has_value() && !is_swa_layer(*layer) && ggml_openvino_npu_kv_head_major_enabled()) {
                 GGML_ASSERT(input_shape[1].get_length() == 1);
                 const int64_t heads = get_n_heads_kv_for_tensor(input);
-                input_shape = ov::PartialShape{1, heads, input_shape[2], input_shape[3].get_length() / heads};
+                const int64_t head_size = input_shape[3].get_length() / heads;
+                input_shape = ggml_openvino_npu_kv_v_transposed_enabled() && name.rfind("cache_v_l", 0) == 0 ?
+                                  ov::PartialShape{1, heads, head_size, input_shape[2]} :
+                                  ov::PartialShape{1, heads, input_shape[2], head_size};
             }
         }
         if (is_stateful() && !is_flat_kv) {
@@ -1143,10 +1146,13 @@ void GgmlOvDecoder::add_extra_inputs() {
             const auto combined_dim = static_cast<size_t>(kv_tensor->ne[0]);
             GGML_ASSERT(n_heads_kv > 0 && combined_dim % n_heads_kv == 0);
             const auto head_size = combined_dim / n_heads_kv;
+            const bool v_transposed =
+                ggml_openvino_npu_kv_v_transposed_enabled() && kv_name.rfind("cache_v_l", 0) == 0;
             m_model_extra_inputs["ggml_hfa_past_" + kv_name] = {
                 get_ov_type(kv_tensor),
-                head_major ? ov::Shape{1, n_heads_kv, past_capacity, head_size} :
-                             ov::Shape{1, past_capacity, n_heads_kv, head_size},
+                v_transposed ? ov::Shape{1, n_heads_kv, head_size, past_capacity} :
+                head_major   ? ov::Shape{1, n_heads_kv, past_capacity, head_size} :
+                               ov::Shape{1, past_capacity, n_heads_kv, head_size},
                 0, true};
         }
         m_model_extra_inputs["ggml_hfa_mask"] = {

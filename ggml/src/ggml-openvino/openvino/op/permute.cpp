@@ -126,8 +126,11 @@ OutputVector translate_permute(const NodeContext & context) {
             cache_shape.rank().get_length() == 4 && cache_shape[1].is_static() && cache_shape[1].get_length() == n_heads &&
             n_heads > 1) {
             // Head-major cache [1, heads, rows, head_size] is already in attention layout: only cut the window.
-            auto two = ov::op::v0::Constant::create(ov::element::i64, {1}, {2});
-            res = std::make_shared<ov::op::v8::Slice>(src, zero, attention_size, one, two);
+            // A transposed V cache [1, heads, head_size, rows] is cut on axis 3 and stays transposed.
+            const bool v_transposed = ggml_openvino_npu_kv_v_transposed_enabled() &&
+                                      context.get_input_names()[0].find("cache_v_l") != std::string::npos;
+            auto axis = ov::op::v0::Constant::create(ov::element::i64, {1}, {v_transposed ? 3 : 2});
+            res = std::make_shared<ov::op::v8::Slice>(src, zero, attention_size, one, axis);
             return rename_outputs_with_suffix({res}, context.get_name());
         }
 

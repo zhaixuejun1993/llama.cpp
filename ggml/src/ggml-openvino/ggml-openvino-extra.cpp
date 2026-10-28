@@ -81,6 +81,7 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_NPU_HFA_PREFILL",
         "GGML_OPENVINO_NPU_KV_ON_DEMAND",
         "GGML_OPENVINO_NPU_KV_HEAD_MAJOR",
+        "GGML_OPENVINO_NPU_KV_V_TRANSPOSED",
         "GGML_OPENVINO_SELF_CONTAINED_BLOB",
         "GGML_OPENVINO_SELF_CONTAINED_MMAP",
         "GGML_OPENVINO_NPU_SHARED_BANK",
@@ -305,6 +306,10 @@ bool ggml_openvino_npu_kv_head_major_enabled() {
            ggml_openvino_npu_kv_slice_enabled() && ggml_openvino_getenv_int("GGML_OPENVINO_NPU_KV_HEAD_MAJOR") != 0;
 }
 
+bool ggml_openvino_npu_kv_v_transposed_enabled() {
+    return ggml_openvino_npu_kv_head_major_enabled() && ggml_openvino_getenv_int("GGML_OPENVINO_NPU_KV_V_TRANSPOSED") != 0;
+}
+
 namespace {
 struct kv_storage_entry {
     size_t row_bytes = 0;
@@ -490,6 +495,28 @@ bool ggml_openvino_kv_storage_copy(const void * ptr, void * host, size_t size, g
             std::memset(s, *h, n);
         }
         done += n;
+    }
+    return true;
+}
+
+bool ggml_openvino_kv_storage_write_rows(const void * data, const void * src, size_t src_stride, size_t src_col,
+                                         size_t dst_row, size_t n) {
+    auto & reg = kv_registry();
+    std::lock_guard<std::mutex> lock(reg.mutex);
+    auto it = reg.entries.find(reinterpret_cast<uintptr_t>(data));
+    if (it == reg.entries.end() || it->second.heads == 0) {
+        return false;
+    }
+    auto & e = it->second;
+    if (dst_row + n > e.cap_rows || src_col + n > src_stride) {
+        throw std::runtime_error("ggml-openvino: head-major KV row write out of range");
+    }
+    const size_t head_bytes = e.row_bytes / e.heads;
+    auto * dst = static_cast<uint8_t *>(e.storage.data());
+    const auto * s = static_cast<const uint8_t *>(src);
+    for (size_t h = 0; h < e.heads; ++h) {
+        std::memcpy(dst + (h * e.cap_rows + dst_row) * head_bytes, s + (h * src_stride + src_col) * head_bytes,
+                    n * head_bytes);
     }
     return true;
 }

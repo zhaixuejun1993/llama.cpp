@@ -150,7 +150,10 @@ static std::optional<ov::Tensor> try_make_kv_sliced_tensor(std::shared_ptr<GgmlO
         const auto type = ggml_decoder->get_ov_type(ggml_tensor);
         const size_t heads = ggml_decoder->get_n_heads_kv_for_tensor(ggml_tensor);
         const size_t rows = n_kv > 0 ? std::min(n_kv, ctx_per_seq) : ctx_per_seq;
-        const ov::Shape shape{1, heads, rows, static_cast<size_t>(ggml_tensor->ne[0]) / heads};
+        const size_t head_size = static_cast<size_t>(ggml_tensor->ne[0]) / heads;
+        const ov::Shape shape = ggml_openvino_npu_kv_v_transposed_enabled() && name.rfind("cache_v_l", 0) == 0 ?
+                                    ov::Shape{1, heads, head_size, rows} :
+                                    ov::Shape{1, heads, rows, head_size};
         return ov::Tensor(type, shape, kv_bind_ptr(ggml_tensor->data, type, shape));
     }
     if (ctx_per_seq <= 0 || n_kv <= 0 || n_kv >= ctx_per_seq) {
@@ -1285,6 +1288,7 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
                 base_extra = base_extra * 131 + static_cast<uint64_t>(ggml_openvino_getenv_int("GGML_OPENVINO_NPU_KEEP_Q4_0"));
                 base_extra = base_extra * 131 + static_cast<uint64_t>(ggml_openvino_getenv_int("GGML_OPENVINO_NPU_KV_SLICE"));
                 base_extra = base_extra * 131 + (ggml_openvino_npu_kv_head_major_enabled() ? 1u : 0u);
+                base_extra = base_extra * 131 + (ggml_openvino_npu_kv_v_transposed_enabled() ? 1u : 0u);
                 base_extra = ggml_openvino_model_cache_mix_string(
                     base_extra, ggml_openvino_getenv_str("GGML_OPENVINO_NPU_CONFIG"));
                 base_extra = ggml_openvino_model_cache_mix_string(
@@ -1562,11 +1566,17 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
     bool kv_grew = false;
     size_t kv_rows = 0;
     if (ggml_openvino_npu_kv_on_demand_enabled()) {
-        for (const auto & name : ov_input_names_local) {
+        for (const auto & input_name : ov_input_names_local) {
+            const bool hfa_past = input_name.rfind("ggml_hfa_past_", 0) == 0;
+            const std::string name = hfa_past ? input_name.substr(strlen("ggml_hfa_past_")) : input_name;
             if (name.rfind("cache_k_l", 0) == 0 || name.rfind("cache_v_l", 0) == 0) {
                 const auto * kv_tensor = ggml_decoder->get_input_ggml_tensor(name);
-                const size_t heads =
+                size_t heads =
                     ggml_openvino_npu_kv_head_major_enabled() ? ggml_decoder->get_n_heads_kv_for_tensor(kv_tensor) : 0;
+                if (ggml_openvino_npu_kv_v_transposed_enabled() && name.rfind("cache_v_l", 0) == 0) {
+                    // [heads][head_size][rows] is head-major storage with one "head" per channel.
+                    heads = static_cast<size_t>(kv_tensor->ne[0]);
+                }
                 kv_rows = get_static_attention_size(ggml_decoder, name);
                 kv_grew |= ggml_openvino_kv_storage_reserve(kv_tensor->data, kv_rows, heads);
             }
@@ -1575,6 +1585,24 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
 
     if (is_prefill) {
         auto inp_len = get_inp_pos_n_tokens(cgraph, inp_pos);
+        // Transposed-V HFA prefill outputs each chunk's V^T rows (see set_rows); they are copied into the cache here.
+        const bool vt_rows = ggml_openvino_npu_kv_v_transposed_enabled() && ggml_openvino_npu_hfa_prefill_enabled();
+        auto is_vt_rows_output = [&](const std::string & name) {
+            if (!vt_rows || name.rfind("cache_v_l", 0) != 0) {
+                return false;
+            }
+            const auto layer = extract_layer_from_name(name);
+            return layer.has_value() && !ggml_decoder->is_swa_layer(*layer);
+        };
+        std::map<const ggml_tensor *, const ggml_tensor *> set_rows_indices;
+        if (vt_rows) {
+            for (int n = 0; n < cgraph->n_nodes; n++) {
+                const auto * node = cgraph->nodes[n];
+                if (node->op == GGML_OP_SET_ROWS && node->view_src) {
+                    set_rows_indices[node->view_src] = node->src[1];
+                }
+            }
+        }
         for (int chunk_index = 0; chunk_index * prefill_chunk_size < inp_len; chunk_index++) {
             for (size_t i = 0; i < ov_input_names_local.size(); i++) {
                 auto param_name = ov_input_names_local[i];
@@ -1599,6 +1627,9 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
                     // Result is the full cache, so binding it over this 0-byte buffer overflows it.
                     continue;
                 }
+                if (is_vt_rows_output(ov_output_names_local[i])) {
+                    continue;
+                }
                 auto output_tensor = create_ov_output_tensor(ggml_decoder, infer_request, i, ggml_tensor);
                 infer_request->set_output_tensor(i, output_tensor);
             }
@@ -1606,6 +1637,36 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, std::shared_ptr<o
             ov_raw_infer_start = ggml_time_us();
             infer_request->infer();
             ov_raw_infer_total += ggml_time_us() - ov_raw_infer_start;
+
+            if (vt_rows) {
+                const size_t base_row = static_cast<size_t>(chunk_index) * prefill_chunk_size;
+                const size_t valid = std::min<size_t>(prefill_chunk_size, inp_len - base_row);
+                const auto & model_outputs = ggml_decoder->get_model_outputs();
+                for (size_t i = 0; i < ov_output_names_local.size(); i++) {
+                    if (!is_vt_rows_output(ov_output_names_local[i])) {
+                        continue;
+                    }
+                    const auto * kv_tensor = model_outputs.at(ov_output_names_local[i]);
+                    const auto * idx = set_rows_indices.at(kv_tensor);
+                    auto row_index = [&](size_t r) -> int64_t {
+                        return idx->type == GGML_TYPE_I64 ? static_cast<const int64_t *>(idx->data)[base_row + r] :
+                                                            static_cast<const int32_t *>(idx->data)[base_row + r];
+                    };
+                    const auto rows = infer_request->get_output_tensor(i);
+                    for (size_t r0 = 0; r0 < valid;) {
+                        const int64_t dst0 = row_index(r0);
+                        size_t len = 1;
+                        while (r0 + len < valid && row_index(r0 + len) == dst0 + static_cast<int64_t>(len)) {
+                            ++len;
+                        }
+                        if (!ggml_openvino_kv_storage_write_rows(kv_tensor->data, rows.data(), rows.get_shape()[3], r0,
+                                                                 static_cast<size_t>(dst0), len)) {
+                            throw std::runtime_error("ggml-openvino: transposed V rows need head-major KV storage");
+                        }
+                        r0 += len;
+                    }
+                }
+            }
 
             if (ggml_openvino_getenv_int("GGML_OPENVINO_DEBUG_OUTPUT") ||
                 ggml_openvino_getenv_str("GGML_OPENVINO_DEBUG_NODE")) {
@@ -2055,12 +2116,15 @@ ov::Tensor get_ov_input_tensor_static_prefill(std::shared_ptr<GgmlOvDecoder> ggm
         const std::string kv_name = param_name.substr(strlen("ggml_hfa_past_"));
         const auto * kv_tensor = ggml_decoder->get_input_ggml_tensor(kv_name);
         const auto & info = ggml_decoder->get_model_extra_inputs().at(param_name);
-        // Shape is [1, past, heads, head_size], or [1, heads, past, head_size] for head-major KV.
+        // Shape is [1, past, heads, head_size], or [1, heads, past, head_size] for head-major KV
+        // ([1, heads, head_size, past] for transposed V).
         const bool head_major = ggml_openvino_npu_kv_head_major_enabled();
-        const size_t past_capacity = head_major ? info.shape[2] : info.shape[1];
+        const bool v_transposed = ggml_openvino_npu_kv_v_transposed_enabled() && kv_name.rfind("cache_v_l", 0) == 0;
+        const size_t past_capacity = v_transposed ? info.shape[3] : head_major ? info.shape[2] : info.shape[1];
         const size_t heads = head_major ? info.shape[1] : info.shape[2];
-        const size_t row_bytes = heads * info.shape[3] * ggml_type_size(kv_tensor->type);
-        if (static_cast<size_t>(kv_tensor->ne[0]) != heads * info.shape[3] || kv_tensor->nb[1] != row_bytes) {
+        const size_t head_size = v_transposed ? info.shape[2] : info.shape[3];
+        const size_t row_bytes = heads * head_size * ggml_type_size(kv_tensor->type);
+        if (static_cast<size_t>(kv_tensor->ne[0]) != heads * head_size || kv_tensor->nb[1] != row_bytes) {
             throw std::runtime_error("HFA past KV source shape is incompatible with " + param_name);
         }
         if (past_capacity <= static_cast<size_t>(kv_tensor->ne[1])) {
