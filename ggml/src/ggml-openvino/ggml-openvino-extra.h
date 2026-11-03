@@ -128,6 +128,13 @@ bool ggml_openvino_npu_kv_head_major_enabled();
 // On top of head-major KV (GGML_OPENVINO_NPU_KV_V_TRANSPOSED): V is stored and bound as [1, heads, head_size, rows]
 // (the per-channel layout is head-major storage with heads * head_size channels) and attention uses V^T.
 bool ggml_openvino_npu_kv_v_transposed_enabled();
+
+// NPU blob cache modes that keep the raw GGUF weights and skip requantization on a warm hit:
+// GGML_OPENVINO_SELF_CONTAINED_BLOB (weights embedded in each blob) or
+// GGML_OPENVINO_NPU_WEIGHTLESS_BANK (weightless blobs plus one shared weights file).
+bool ggml_openvino_npu_raw_weight_cache_enabled();
+bool ggml_openvino_npu_weightless_bank_enabled();
+
 void ggml_openvino_kv_storage_register(void * data, size_t row_bytes, size_t rows);
 void ggml_openvino_kv_storage_unregister(const void * base, size_t size);
 // Storage address backing ggml address `ptr` with at least `bytes` valid (grown if needed);

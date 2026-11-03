@@ -85,6 +85,7 @@ void ggml_openvino_device_config::init() {
         "GGML_OPENVINO_SELF_CONTAINED_BLOB",
         "GGML_OPENVINO_SELF_CONTAINED_MMAP",
         "GGML_OPENVINO_NPU_SHARED_BANK",
+        "GGML_OPENVINO_NPU_WEIGHTLESS_BANK",
     };
 
     for (const char * const & env_var : env_var_names) {
@@ -308,6 +309,15 @@ bool ggml_openvino_npu_kv_head_major_enabled() {
 
 bool ggml_openvino_npu_kv_v_transposed_enabled() {
     return ggml_openvino_npu_kv_head_major_enabled() && ggml_openvino_getenv_int("GGML_OPENVINO_NPU_KV_V_TRANSPOSED") != 0;
+}
+
+bool ggml_openvino_npu_raw_weight_cache_enabled() {
+    return ggml_openvino_getenv_int("GGML_OPENVINO_SELF_CONTAINED_BLOB") != 0 ||
+           ggml_openvino_npu_weightless_bank_enabled();
+}
+
+bool ggml_openvino_npu_weightless_bank_enabled() {
+    return ggml_openvino_getenv_int("GGML_OPENVINO_NPU_WEIGHTLESS_BANK") != 0;
 }
 
 namespace {
