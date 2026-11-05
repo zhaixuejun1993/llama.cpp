@@ -9,7 +9,6 @@ import subprocess
 from time import sleep, time
 from typing import Optional, Union
 
-import datasets
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,8 +23,16 @@ logger = logging.getLogger("server-bench")
 def get_prompts_text(dataset_name: str, n_prompts: int) -> Optional[list[str]]:
     ret = []
     if dataset_name.lower() == "mmlu":
+        import datasets
         logger.info("Loading MMLU dataset...")
         ret = datasets.load_dataset("cais/mmlu", "all")["test"]["question"]
+    elif dataset_name.startswith("text:"):
+        ret = [dataset_name[len("text:"):]] * max(n_prompts, 1)
+    elif dataset_name.startswith("jsonl:"):
+        with open(dataset_name[len("jsonl:"):], encoding="utf-8") as f:
+            file_prompts = [json.loads(line)["prompt"] for line in f if line.strip()]
+        n = n_prompts if n_prompts >= 0 else len(file_prompts)
+        ret = [file_prompts[i % len(file_prompts)] for i in range(n)]
     else:
         return None
     if n_prompts >= 0:
@@ -103,7 +110,7 @@ def get_prompt_length(data: dict) -> int:
     return len(tokens)
 
 
-def send_prompt(data: dict) -> tuple[float, list[float]]:
+def send_prompt(data: dict) -> tuple[float, list[float], str]:
     session = data["session"]
     server_address: str = data["server_address"]
 
@@ -141,12 +148,23 @@ def send_prompt(data: dict) -> tuple[float, list[float]]:
     if len(lines) > 1 and "timings" in json.loads(lines[-2][6:]):
         token_arrival_times = token_arrival_times[:-1]
 
-    return (t_submit, token_arrival_times)
+    answer_parts: list[str] = []
+    for line in lines:
+        payload = line[6:].strip()
+        if payload == b"[DONE]":
+            continue
+        chunk = json.loads(payload)
+        if "choices" in chunk:
+            answer_parts += [c.get("text") or "" for c in chunk["choices"]]
+        else:
+            answer_parts.append(chunk.get("content") or "")
+
+    return (t_submit, token_arrival_times, "".join(answer_parts))
 
 
 def benchmark(
         path_server: str, path_log: Optional[str], path_db: Optional[str], name: Optional[str], prompt_source: str, n_prompts: int,
-        n_predict: int, n_predict_min: int, seed_offset: int):
+        n_predict: int, n_predict_min: int, seed_offset: int, print_answers: bool):
     external_server: bool = path_server.startswith("http://") or path_server.startswith("https://")
     if os.environ.get("LLAMA_ARG_N_PARALLEL") is None:
         logger.info("LLAMA_ARG_N_PARALLEL not explicitly set, using 32")
@@ -204,7 +222,7 @@ def benchmark(
 
         logger.info("Starting the benchmark...\n")
         t0 = time()
-        results: list[tuple[float, list[float]]] = thread_map(send_prompt, data, max_workers=parallel, chunksize=1)
+        results: list[tuple[float, list[float], str]] = thread_map(send_prompt, data, max_workers=parallel, chunksize=1)
     finally:
         if server is not None and server["process"] is not None:
             server["process"].terminate()
@@ -215,7 +233,10 @@ def benchmark(
     prompt_t = []
     token_t = []
     depth_sum: int = 0
-    for pn, (t_submit, tat) in zip(prompt_n, results):
+    if print_answers:
+        for i, (d, (_, _, answer)) in enumerate(zip(data, results)):
+            logger.info(f"\n===== Prompt {i} =====\n{d['prompt']}\n----- Answer {i} -----\n{answer}")
+    for pn, (t_submit, tat, _) in zip(prompt_n, results):
         prompt_t.append(tat[0] - t_submit)
         token_t += tat
         n_tokens: int = len(tat)
@@ -262,7 +283,7 @@ def benchmark(
     plt.ylabel("Time to first token [ms]")
     plt.savefig("prompt_time.png", dpi=240)
 
-    bin_max = np.ceil(token_t_last) + 1
+    bin_max = int(np.ceil(token_t_last)) + 1
     plt.figure()
     plt.hist(token_t, np.linspace(0, bin_max, bin_max, endpoint=False).tolist())
     plt.xlim(0, bin_max + 1)
@@ -285,7 +306,8 @@ if __name__ == "__main__":
     parser.add_argument("--name", type=str, default=None, help="Name to label plots and database entries with")
     parser.add_argument(
         "--prompt_source", type=str, default="rng-1024-2048",
-        help="How to get the prompts for the benchmark, either 'mmlu' for MMLU questions or "
+        help="How to get the prompts for the benchmark, either 'mmlu' for MMLU questions, "
+        "'text:<prompt>' to repeat a fixed prompt, 'jsonl:<path>' for {\"prompt\": ...} lines (cycled to n_prompts), or "
         "rng-MIN-MAX for synthetic prompts with random lengths in the interval [MIN, MAX]")
     parser.add_argument("--n_prompts", type=int, default=100, help="Number of prompts to evaluate")
     parser.add_argument("--n_predict", type=int, default=2048, help="Max. number of tokens to predict per prompt")
@@ -294,5 +316,6 @@ if __name__ == "__main__":
         help="Min. number of tokens to predict per prompt (supported for synthetic prompts only)")
     parser.add_argument("--seed_offset", type=int, default=0, help="Offset for determining the seeds for pseudorandom prompt/generation lengths. "
                         "Correlations between seeds can occur when set >= 1000. Negative values mean no seed.")
+    parser.add_argument("--print_answers", action="store_true", help="Print each prompt and the generated answer")
     args = parser.parse_args()
     benchmark(**vars(args))
