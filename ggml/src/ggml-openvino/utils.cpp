@@ -2082,7 +2082,7 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, const std::shared
     auto get_prefill_chunk_size = [] {
         static const int chunk_size = []() {
             int env_prefill_chunk_size = ggml_openvino_getenv_int("GGML_OPENVINO_PREFILL_CHUNK_SIZE");
-            return env_prefill_chunk_size > 0 ? env_prefill_chunk_size : 256;
+            return env_prefill_chunk_size > 0 ? env_prefill_chunk_size : 1024;
         }();
         return chunk_size;
     };

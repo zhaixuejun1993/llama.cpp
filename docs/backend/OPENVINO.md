@@ -880,7 +880,7 @@ The defaults fit most models. The variables below trade one property for another
 
 | Variable | Device | Type | Default | Description |
 |---|---|---|---|---|
-| `GGML_OPENVINO_PREFILL_CHUNK_SIZE` | NPU | Integer | `256` | Number of tokens that the NPU processes in one prefill step. A larger value can make long prompts faster, and makes the first load longer. Zero or a negative value means the default. Example: `GGML_OPENVINO_PREFILL_CHUNK_SIZE=512`. |
+| `GGML_OPENVINO_PREFILL_CHUNK_SIZE` | NPU | Integer | `1024` | Number of tokens that the NPU processes in one prefill step. A larger value can make long prompts faster, and makes the first load longer. Zero or a negative value means the default. Example: `GGML_OPENVINO_PREFILL_CHUNK_SIZE=512`. |
 | `GGML_OPENVINO_NPU_TOKEN_EMBD_QUANT` | NPU | String | `q8_0_c` | How a `Q6_K` `token_embd.weight` is stored for the NPU: `q8_0_c` (8-bit, one scale per row), `f16`, `q4_0_128` (4-bit, one scale per 128 weights) or `q4_0_c` (4-bit, one scale per row). The 4-bit layouts use less memory at some cost in accuracy; `f16` uses more memory. Keep the default unless memory is tight. |
 | `GGML_OPENVINO_GDN_DECOMPOSE` | all | Boolean | auto | Translate `GATED_DELTA_NET` (Qwen3.5) into MatMul operations instead of the OpenVINO `GatedDeltaNet` op. Unset: on for the Lunar Lake NPU, off elsewhere. `0` turns it off, `1` turns it on for any device. Try `1` for Qwen3.5 on the Panther Lake NPU. |
 | `GGML_OPENVINO_MANUAL_GQA_ATTN` | CPU, GPU | Boolean | on for GPU | Build grouped-query attention from separate MatMul operations. Unset: on for GPU, off for CPU and NPU. `1` turns it on, `0` turns it off. Try `1` on the CPU for faster decode. |
@@ -1007,7 +1007,7 @@ build\ReleaseOV\bin\llama-simple.exe -m "C:\models\Llama-3.2-1B-Instruct-Q4_K_M.
 
 - Default context resolves to the model's training context (e.g. 131072 for Llama 3.2 1B), which can OOM or fail or degrade performance on NPU. Inspect the resolved value with `-lv 3`.
   - **Workaround:** Pass an explicit `-c <N>`, e.g. `-c 512`.
-- NPU device uses a static graph with a fixed prefill chunk size (defaults to 256), configurable with `GGML_OPENVINO_PREFILL_CHUNK_SIZE`. Large prefill/batch settings may need tuning.
+- NPU device uses a static graph with a fixed prefill chunk size (defaults to 1024), configurable with `GGML_OPENVINO_PREFILL_CHUNK_SIZE`. Large prefill/batch settings may need tuning.
 - `llama-server -np > 1` (multiple parallel sequences) is not supported.
 - `llama-perplexity`: requires `-b 512` or smaller.
 - Flash attention must stay on, which is the default (`-fa auto`). With `-fa off`, the run fails on the NPU.

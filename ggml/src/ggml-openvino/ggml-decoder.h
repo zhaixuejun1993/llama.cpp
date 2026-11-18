@@ -165,7 +165,7 @@ public:
                   bool is_stateful = false,
                   bool model_is_splitted = false,
                   bool is_prefill = false,
-                  int prefill_chunk_size = 256);
+                  int prefill_chunk_size = 1024);
 
     // Naive graph decoder
     GgmlOvDecoder(ggml_cgraph * cgraph, std::map<std::string, std::shared_ptr<ov::Node>> & model_weights);
