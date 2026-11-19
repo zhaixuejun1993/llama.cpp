@@ -191,7 +191,6 @@ constexpr env_var env_vars[] = {
     {"GGML_OPENVINO_KV_SLICE", env_type::BOOL},
     {"GGML_OPENVINO_NPU_HFA_PREFILL", env_type::BOOL},
     {"GGML_OPENVINO_NPU_DECODE_UNFOLD", env_type::BOOL},
-    {"GGML_OPENVINO_NPU_PARALLEL_COMPILE", env_type::BOOL},
     {"GGML_OPENVINO_SELF_CONTAINED_MMAP", env_type::BOOL},
     // Build the precise (but O(n_nodes)) graph cache key. Needed by op tests.
     {"GGML_OPENVINO_FULL_GRAPH_KEY", env_type::BOOL},
@@ -635,10 +634,6 @@ bool ggml_openvino_npu_hfa_prefill_enabled() {
 
 bool ggml_openvino_npu_decode_unfold_enabled() {
     return ggml_openvino_getenv_int("GGML_OPENVINO_NPU_DECODE_UNFOLD") != 0;
-}
-
-bool ggml_openvino_npu_parallel_compile_enabled() {
-    return ggml_openvino_getenv_int("GGML_OPENVINO_NPU_PARALLEL_COMPILE") != 0;
 }
 
 int ggml_openvino_npu_decode_bucket() {

@@ -152,7 +152,6 @@ bool ggml_openvino_npu_fast_mask_enabled();
 // env-var name lives in one place; see docs/backend/OPENVINO.md for semantics.
 bool ggml_openvino_npu_hfa_prefill_enabled();
 bool ggml_openvino_npu_decode_unfold_enabled();
-bool ggml_openvino_npu_parallel_compile_enabled();
 
 // GGML_OPENVINO_NPU_BLOB_PREBUILD (default 1): static NPU graphs attend a KV window of 1024*2^k rows (clamped to ctx)
 // instead of the whole ctx, with one decode model per window, all built/imported with the prefill/decode pair;
