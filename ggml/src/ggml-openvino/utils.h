@@ -102,6 +102,18 @@ struct decoder_runtime_ctx {
     int decode_attention_size = -1;
     std::string shared_key;
     std::map<int, std::shared_ptr<ov::InferRequest>> decode_window_requests;
+    // GGML_OPENVINO_NPU_PREFILL_PREBUILD: requests of the prefill models of other KV windows, keyed by
+    // (attention size, SWA attention size).
+    std::map<std::pair<int, int>, std::shared_ptr<ov::InferRequest>> prefill_window_requests;
+    // Last use of each request, for GGML_OPENVINO_NPU_MAX_INFER_REQUESTS.
+    uint64_t request_tick = 0;
+    std::unordered_map<const ov::InferRequest *, uint64_t> request_last_use;
+
+    void clear_window_requests() {
+        decode_window_requests.clear();
+        prefill_window_requests.clear();
+        request_last_use.clear();
+    }
 };
 
 struct ov_compiled_graph {
@@ -124,6 +136,10 @@ struct ov_compiled_graph {
     std::shared_ptr<ggml_openvino_weights_layout> weights_layout;
     // Compute params the pair's decode model was built with; window models derive from them.
     ComputeParams decode_c_params;
+    // GGML_OPENVINO_NPU_PREFILL_PREBUILD: the pair's prefill params and the prefill models of other KV windows,
+    // keyed by (attention size, SWA attention size).
+    ComputeParams prefill_c_params;
+    std::map<std::pair<int, int>, ov::CompiledModel> prefill_windows;
 };
 
 // Only compilation and cache publication use this mutex. Requests, decoders and

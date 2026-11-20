@@ -152,10 +152,12 @@ constexpr env_var env_vars[] = {
     {"GGML_OPENVINO_LAZY_HOST_THRESHOLD_MB", env_type::INT},
     {"GGML_OPENVINO_PROFILING", env_type::INT},
     {"GGML_OPENVINO_GDN_DECOMPOSE_CHUNK", env_type::INT},
+    {"GGML_OPENVINO_NPU_MAX_INFER_REQUESTS", env_type::INT},
     {"GGML_OPENVINO_GDN_Q_SCALE", env_type::FLOAT},
     // Switches
     {"GGML_OPENVINO_COMPILED_MODEL_CACHE_ONLY", env_type::BOOL},
     {"GGML_OPENVINO_NPU_BLOB_PREBUILD", env_type::BOOL},
+    {"GGML_OPENVINO_NPU_PREFILL_PREBUILD", env_type::BOOL},
     {"GGML_OPENVINO_NPU_KV_ON_DEMAND", env_type::BOOL},
     {"GGML_OPENVINO_STATEFUL_EXECUTION", env_type::BOOL},
     {"GGML_OPENVINO_DUMP_CGRAPH", env_type::BOOL},
@@ -641,6 +643,17 @@ int ggml_openvino_npu_decode_bucket() {
         return 0;
     }
     return ggml_openvino_getenv_int("GGML_OPENVINO_NPU_BLOB_PREBUILD", 1) != 0 ? 1024 : 0;
+}
+
+bool ggml_openvino_npu_prefill_prebuild_enabled() {
+    return ggml_openvino_npu_decode_bucket() > 0 && ggml_openvino_kv_slice_enabled() &&
+           ggml_openvino_getenv_int("GGML_OPENVINO_NPU_PREFILL_PREBUILD") != 0 &&
+           ggml_openvino_getenv_str("GGML_OPENVINO_COMPILED_MODEL_CACHE_DIR") == nullptr;
+}
+
+int ggml_openvino_npu_max_infer_requests() {
+    return ggml_openvino_getenv_int("GGML_OPENVINO_NPU_MAX_INFER_REQUESTS",
+                                    ggml_openvino_npu_prefill_prebuild_enabled() ? 6 : 0);
 }
 
 int ggml_openvino_static_kv_window(int rows, int ctx) {

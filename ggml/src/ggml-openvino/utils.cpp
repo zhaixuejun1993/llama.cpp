@@ -2124,6 +2124,14 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, const std::shared
             c_params.attention_size = decode_window;
         }
     }
+    // GGML_OPENVINO_NPU_PREFILL_PREBUILD: prefill attends at least the decode bucket, so its KV windows are the decode
+    // windows, and the prefill model of every window is built with the pair.
+    static const bool prefill_prebuild = ggml_openvino_npu_prefill_prebuild_enabled();
+    const bool use_prefill_windows = prefill_prebuild && decode_bucket > 0 && m_params.ctx_per_seq > 0;
+    if (use_prefill_windows && is_prefill && c_params.attention_size > 0) {
+        c_params.attention_size = std::max(c_params.attention_size, std::min(decode_bucket, m_params.ctx_per_seq));
+    }
+    static const int max_infer_requests = ggml_openvino_npu_max_infer_requests();
 
     int64_t decoder_end_time;
     int64_t conversion_end_time;
@@ -2162,6 +2170,8 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, const std::shared
 
     // Same model, only the prefill attention size differs from the entry's pair.
     bool prefill_size_changed = false;
+    // GGML_OPENVINO_NPU_PREFILL_PREBUILD: run the prefill model of another KV window of the entry's pair.
+    bool prefill_window = false;
     if (cache_hit) {
         ggml_decoder = entry->ptr;
         old_m_params = ggml_decoder->get_model_params();
@@ -2170,6 +2180,10 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, const std::shared
             cache_hit = entry->prefill_attention_size == c_params.attention_size &&
                         entry->prefill_attention_size_swa == c_params.attention_size_swa;
             prefill_size_changed = !cache_hit;
+            if (prefill_size_changed && use_prefill_windows && !entry->shared_key.empty()) {
+                cache_hit = true;
+                prefill_window = true;
+            }
         }
     }
 
@@ -2237,7 +2251,7 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, const std::shared
             entry->prefill_attention_size_swa = c_params.attention_size_swa;
             entry->decode_attention_size = compiled.decode_attention_size;
             entry->shared_key = shared_key;
-            entry->decode_window_requests.clear();
+            entry->clear_window_requests();
             infer_request = is_prefill ? prefill_request : decode_request;
             ov_input_names_local = is_prefill ? compiled.prefill_input_names : compiled.input_names;
             ov_output_names_local = is_prefill ? compiled.prefill_output_names : compiled.output_names;
@@ -2537,7 +2551,7 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, const std::shared
             entry->prefill_attention_size_swa = c_params.attention_size_swa;
             entry->decode_attention_size = decode_c_params.attention_size;
             entry->shared_key = shared_key;
-            entry->decode_window_requests.clear();
+            entry->clear_window_requests();
 
             if (!shared_key.empty()) {
                 ov_compiled_graph graph;
@@ -2558,6 +2572,7 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, const std::shared
                 graph.weights_path = weights_path;
                 graph.weights_layout = decode_bucket > 0 ? std::move(weights_layout) : nullptr;
                 graph.decode_c_params = decode_c_params;
+                graph.prefill_c_params = c_params;
                 shared_cache->graphs.emplace(shared_key, std::move(graph));
                 pair_built = !decode_source;
             }
@@ -2690,6 +2705,103 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, const std::shared
         auto & compiled = build_decode_window(graph_it->second, c_params, window);
         request = std::make_shared<ov::InferRequest>(compiled.create_infer_request());
         return request;
+    };
+
+    // GGML_OPENVINO_NPU_PREFILL_PREBUILD: prefill model for another KV window than the pair's, built once per window
+    // with the pair's prefill params, then cached in the shared compiled cache. Caller holds the shared cache mutex.
+    auto build_prefill_window = [&](ov_compiled_graph & graph, int window, int window_swa) -> ov::CompiledModel & {
+        const auto window_key = std::make_pair(window, window_swa);
+        auto window_it = graph.prefill_windows.find(window_key);
+        if (window_it != graph.prefill_windows.end()) {
+            return window_it->second;
+        }
+        auto window_c_params = graph.prefill_c_params;
+        window_c_params.attention_size = window;
+        window_c_params.attention_size_swa = window_swa;
+        auto model_weights = GgmlOvDecoder::create_weight_nodes(cgraph);
+        auto window_decoder = std::make_shared<GgmlOvDecoder>(cgraph, m_params, window_c_params, model_weights,
+                                                              is_static, stateful, false, true, prefill_chunk_size);
+        window_decoder->device = device;
+        const ov::AnyMap window_config = ggml_openvino_npu_prefill_config(compile_config, *window_decoder);
+        static_build_args args{&core, device, false, 0, std::string(), cgraph, false, false, {}};
+        ov::CompiledModel compiled;
+        std::shared_ptr<ov::InferRequest> built_request;
+        std::vector<std::string> names_in, names_out;
+        int64_t t_conv = 0, t_compile = 0;
+        const int64_t t0 = ggml_time_us();
+        auto model = convert_static_model(args, window_decoder, "prefill", t_conv);
+        build_static_model(args, window_decoder, "prefill", std::move(model), window_config, 0, compiled,
+                           built_request, names_in, names_out, t_conv, t_compile);
+        if (names_in != graph.prefill_input_names || names_out != graph.prefill_output_names) {
+            throw std::runtime_error("ggml-openvino: prefill window model ports differ from the base prefill model");
+        }
+        GGML_LOG_INFO("ggml-openvino: prefill KV window %d model ready in %.1f ms\n", window,
+                      (ggml_time_us() - t0) / 1000.0);
+        return graph.prefill_windows.emplace(window_key, std::move(compiled)).first->second;
+    };
+
+    auto get_prefill_window_request = [&](int window, int window_swa) -> std::shared_ptr<ov::InferRequest> {
+        const auto window_key = std::make_pair(window, window_swa);
+        auto request_it = entry->prefill_window_requests.find(window_key);
+        if (request_it != entry->prefill_window_requests.end()) {
+            return request_it->second;
+        }
+        auto shared_cache = r_ctx->compiled_cache;
+        std::unique_lock<std::mutex> compile_lock(shared_cache->mutex);
+        auto graph_it = shared_cache->graphs.find(entry->shared_key);
+        if (graph_it == shared_cache->graphs.end()) {
+            throw std::runtime_error("ggml-openvino: prefill window requested without a shared compiled graph");
+        }
+        auto & compiled = build_prefill_window(graph_it->second, window, window_swa);
+        auto request = std::make_shared<ov::InferRequest>(compiled.create_infer_request());
+        entry->prefill_window_requests.emplace(window_key, request);
+        return request;
+    };
+
+    // GGML_OPENVINO_NPU_MAX_INFER_REQUESTS: mark the request of this call as used and drop the least recently used
+    // window requests over the cap. The pair's base prefill/decode requests always stay; a dropped request is
+    // recreated from its cached compiled model when needed again.
+    auto touch_request = [&](const std::shared_ptr<ov::InferRequest> & current) {
+        if (max_infer_requests <= 0 || !current) {
+            return;
+        }
+        entry->request_last_use[current.get()] = ++entry->request_tick;
+        auto last_use = [&](const std::shared_ptr<ov::InferRequest> & request) -> uint64_t {
+            auto it = entry->request_last_use.find(request.get());
+            return it == entry->request_last_use.end() ? 0 : it->second;
+        };
+        while (2 + entry->decode_window_requests.size() + entry->prefill_window_requests.size() >
+               static_cast<size_t>(max_infer_requests)) {
+            auto decode_victim = entry->decode_window_requests.end();
+            auto prefill_victim = entry->prefill_window_requests.end();
+            uint64_t oldest = UINT64_MAX;
+            for (auto it = entry->decode_window_requests.begin(); it != entry->decode_window_requests.end(); ++it) {
+                if (it->second != current && last_use(it->second) < oldest) {
+                    oldest = last_use(it->second);
+                    decode_victim = it;
+                }
+            }
+            for (auto it = entry->prefill_window_requests.begin(); it != entry->prefill_window_requests.end(); ++it) {
+                if (it->second != current && last_use(it->second) < oldest) {
+                    oldest = last_use(it->second);
+                    prefill_victim = it;
+                    decode_victim = entry->decode_window_requests.end();
+                }
+            }
+            if (prefill_victim != entry->prefill_window_requests.end()) {
+                GGML_LOG_INFO("ggml-openvino: dropped the idle prefill KV window %d request (cap %d)\n",
+                              prefill_victim->first.first, max_infer_requests);
+                entry->request_last_use.erase(prefill_victim->second.get());
+                entry->prefill_window_requests.erase(prefill_victim);
+            } else if (decode_victim != entry->decode_window_requests.end()) {
+                GGML_LOG_INFO("ggml-openvino: dropped the idle decode KV window %d request (cap %d)\n",
+                              decode_victim->first, max_infer_requests);
+                entry->request_last_use.erase(decode_victim->second.get());
+                entry->decode_window_requests.erase(decode_victim);
+            } else {
+                break;
+            }
+        }
     };
 
     // Build or import every other decode window right after the pair, from the pair's own graph and params,
@@ -2831,7 +2943,31 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, const std::shared
                 GGML_LOG_INFO("ggml-openvino: preloaded %zu prefill KV window model(s) in %.1f ms\n", imported,
                               (ggml_time_us() - t2) / 1000.0);
             }
+
+            // GGML_OPENVINO_NPU_PREFILL_PREBUILD without a cache dir: compile the prefill model of every other window
+            // now, so a prompt of another length only switches requests.
+            if (use_prefill_windows && !graph.weightless_bank) {
+                const int64_t t3 = ggml_time_us();
+                for (int window = std::min(decode_bucket, m_params.ctx_per_seq);; window *= 2) {
+                    window = std::min(window, m_params.ctx_per_seq);
+                    if (window != entry->prefill_attention_size) {
+                        build_prefill_window(graph, window, entry->prefill_attention_size_swa);
+                    }
+                    if (window >= m_params.ctx_per_seq) {
+                        break;
+                    }
+                }
+                GGML_LOG_INFO("ggml-openvino: prebuilt %zu prefill KV window model(s) in %.1f ms\n",
+                              graph.prefill_windows.size(), (ggml_time_us() - t3) / 1000.0);
+            }
         }
+    }
+
+    if (prefill_window) {
+        infer_request = get_prefill_window_request(c_params.attention_size, c_params.attention_size_swa);
+    }
+    if (is_prefill) {
+        touch_request(infer_request);
     }
 
     // On-demand KV: grow the storage to this call's KV window before binding, so every view of the call
@@ -2972,6 +3108,7 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, const std::shared
         if (decode_bucket > 0 && c_params.attention_size != entry->decode_attention_size) {
             infer_request = get_decode_window_request(c_params.attention_size);
         }
+        touch_request(infer_request);
 
         for (size_t i = 0; i < ov_input_names_local.size(); i++) {
             const auto & param_name = ov_input_names_local[i];
@@ -3021,6 +3158,12 @@ enum ggml_status ov_graph_compute_static(ggml_cgraph * cgraph, const std::shared
         for (auto it = entry->decode_window_requests.begin(); it != entry->decode_window_requests.end();) {
             it = it->second == infer_request ? std::next(it) : entry->decode_window_requests.erase(it);
         }
+        for (auto it = entry->prefill_window_requests.begin(); it != entry->prefill_window_requests.end();) {
+            it = it->second == infer_request ? std::next(it) : entry->prefill_window_requests.erase(it);
+        }
+        const uint64_t current_use = entry->request_last_use[infer_request.get()];
+        entry->request_last_use.clear();
+        entry->request_last_use[infer_request.get()] = current_use;
         auto shared_cache = r_ctx->compiled_cache;
         std::lock_guard<std::mutex> compile_lock(shared_cache->mutex);
         auto graph_it = shared_cache->graphs.find(entry->shared_key);

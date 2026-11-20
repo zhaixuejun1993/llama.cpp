@@ -159,6 +159,14 @@ bool ggml_openvino_npu_decode_unfold_enabled();
 // Returns the window base (1024), 0 = off (GGML_OPENVINO_NPU_BLOB_PREBUILD=0).
 int ggml_openvino_npu_decode_bucket();
 
+// GGML_OPENVINO_NPU_PREFILL_PREBUILD (default 0, needs BLOB_PREBUILD and KV_SLICE, no compiled-model cache dir):
+// prefill attends at least the decode bucket, and the prefill model of every KV window is built with the pair, so a
+// prompt of another length only switches requests instead of recompiling the pair.
+bool ggml_openvino_npu_prefill_prebuild_enabled();
+// GGML_OPENVINO_NPU_MAX_INFER_REQUESTS: cap on the infer requests one static entry keeps (base pair + KV window
+// requests); the least recently used window request is dropped first. Default 6 with PREFILL_PREBUILD, else 0 (none).
+int ggml_openvino_npu_max_infer_requests();
+
 // Rows a static prefill attends with GGML_OPENVINO_KV_SLICE: the attended length rounded up to a power of two,
 // clamped to ctx.
 int ggml_openvino_static_kv_window(int rows, int ctx);
