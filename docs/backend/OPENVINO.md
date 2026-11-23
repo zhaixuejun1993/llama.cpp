@@ -903,14 +903,13 @@ export GGML_OPENVINO_COMPILED_MODEL_CACHE_DIR=/tmp/ov_cache
 # CPU or GPU, later runs (optional): require the cached model and skip the weight upload and the compilation.
 export GGML_OPENVINO_COMPILED_MODEL_CACHE_ONLY=1
 
-# NPU: add the weightless bank.
+# NPU: the cache always holds the models without weights plus one shared weights file.
 export GGML_OPENVINO_DEVICE=NPU
 export GGML_OPENVINO_COMPILED_MODEL_CACHE_DIR=/tmp/ov_cache
-export GGML_OPENVINO_NPU_WEIGHTLESS_BANK=1
 ./build/ReleaseOV/bin/llama-cli -m ~/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf -c 512
 
 # NPU, later runs (optional): use less memory. The run fails if a cached model is missing.
-export GGML_OPENVINO_SELF_CONTAINED_MMAP=1
+export GGML_OPENVINO_NPU_CACHE_MMAP=1
 ```
 
 <details>
@@ -919,12 +918,12 @@ export GGML_OPENVINO_SELF_CONTAINED_MMAP=1
 | Variable | Device | Type | Default | Description |
 |---|---|---|---|---|
 | `GGML_OPENVINO_COMPILED_MODEL_CACHE_ONLY` | CPU, GPU | Boolean | `0` | Require an existing cached model and skip the weight upload and the compilation. Needs mmap model loading (the default on Linux and Windows) and a model that runs fully on OpenVINO. |
-| `GGML_OPENVINO_NPU_WEIGHTLESS_BANK` | NPU | Boolean | `0` | Requires `GGML_OPENVINO_COMPILED_MODEL_CACHE_DIR`. Write the prefill and decode models without weights, plus one shared weights file. Later runs read the weights from that file and keep one copy in memory. |
-| `GGML_OPENVINO_SELF_CONTAINED_MMAP` | NPU | Boolean | `0` | Later runs only. Requires `GGML_OPENVINO_NPU_WEIGHTLESS_BANK=1` and an existing cache. Use the memory-mapped GGUF file as the model buffer, which lowers the host memory peak. Fails if a cached model is missing; run once without it to build the cache. |
+| `GGML_OPENVINO_NPU_CACHE_MMAP` | NPU | Boolean | `0` | Later runs only. Requires `GGML_OPENVINO_COMPILED_MODEL_CACHE_DIR` and an existing cache. Use the memory-mapped GGUF file as the model buffer, which lowers the host memory peak. Fails if a cached model is missing; run once without it to build the cache. The old name `GGML_OPENVINO_SELF_CONTAINED_MMAP` stops the backend. |
 | `GGML_OPENVINO_CACHE_DIR` | all | String | `not set` | Directory for the cache of the OpenVINO plugin itself. `GGML_OPENVINO_COMPILED_MODEL_CACHE_DIR` is the recommended cache. |
 
 - One directory can hold the cached models of different models and settings.
-- NPU: each prefill length enters the cache in a run without `GGML_OPENVINO_SELF_CONTAINED_MMAP`.
+- NPU: each prefill length enters the cache in a run without `GGML_OPENVINO_NPU_CACHE_MMAP`.
+- NPU: a graph without a KV cache (for example an embedding model) cannot be cached; the run stops, so unset `GGML_OPENVINO_COMPILED_MODEL_CACHE_DIR` for it.
 - See [Compiled model cache](../../ggml/src/ggml-openvino/README.md#compiled-model-cache) for the workflow and the restrictions.
 
 </details>
